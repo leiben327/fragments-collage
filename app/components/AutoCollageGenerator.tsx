@@ -35,6 +35,16 @@ import {
 } from "@/app/lib/moodTextStyle";
 import { SESSION_ACTIVE_FRAGMENT_CHALLENGE_KEY } from "@/app/lib/communityFragmentKeys";
 import {
+  addPortfolioEntry,
+  blobToDataUrl,
+  newPortfolioId,
+} from "@/app/lib/portfolioStorage";
+import {
+  screenshotScaleForBand,
+  useViewportEffectsBand,
+  type ViewportEffectsBand,
+} from "@/app/lib/useViewportEffectsBand";
+import {
   newFragmentId,
   saveCommunityFragment,
 } from "@/app/lib/communityFragmentsIndexedDb";
@@ -45,6 +55,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion";
 import { domToBlob } from "modern-screenshot";
 import {
+  startTransition,
   useCallback,
   useEffect,
   useId,
@@ -138,11 +149,12 @@ async function collageNodeToPngBlob(
   backgroundColor: string,
   exportWidth: number,
   exportHeight: number,
+  scale: number,
 ): Promise<Blob> {
   const capture = () =>
     domToBlob(node, {
       font: false,
-      scale: 1,
+      scale,
       width: exportWidth,
       height: exportHeight,
       backgroundColor,
@@ -164,7 +176,9 @@ async function collageNodeToPngBlob(
   if (!blob || blob.size < 64) {
     blob = await domToBlob(node, {
       font: false,
-      scale: 1,
+      scale,
+      width: exportWidth,
+      height: exportHeight,
       backgroundColor,
       type: "image/png",
       fetch: { bypassingCache: true },
@@ -295,6 +309,7 @@ function useImageSlots() {
 
 export function AutoCollageGenerator() {
   const reduce = useReducedMotion();
+  const viewportBand = useViewportEffectsBand();
   const fileInputId = useId();
   const edgeFilterUid = useId().replace(/:/g, "");
   const boardRef = useRef<HTMLDivElement>(null);
@@ -319,6 +334,8 @@ export function AutoCollageGenerator() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareChallengeTag, setShareChallengeTag] = useState<string | null>(null);
+  const [portfolioBusy, setPortfolioBusy] = useState(false);
+  const [portfolioMessage, setPortfolioMessage] = useState<string | null>(null);
   const [moodFontId, setMoodFontId] = useState<MoodFontId>(DEFAULT_MOOD_FONT_ID);
   const [moodFontSizePx, setMoodFontSizePx] = useState(DEFAULT_MOOD_FONT_SIZE_PX);
   const [moodTextPositionId, setMoodTextPositionId] = useState<MoodTextPositionId>(
@@ -336,24 +353,43 @@ export function AutoCollageGenerator() {
     [canvasFormatId],
   );
 
+  const layoutEngineOptions = useMemo(
+    () => ({
+      liteDecor: viewportBand !== "full",
+      liteRender: viewportBand === "compact",
+    }),
+    [viewportBand],
+  );
+
   const boardFrameStyle = useMemo((): CSSProperties => {
     const W = canvasFormat.exportWidth;
     const H = canvasFormat.exportHeight;
     const portrait = H > W * 1.08;
+    const maxPortraitH =
+      viewportBand === "full"
+        ? "min(1000px, min(88dvh, 92svh))"
+        : viewportBand === "cozy"
+          ? "min(720px, min(76dvh, 88svh))"
+          : "min(520px, min(64dvh, 84svh))";
     return {
       aspectRatio: `${W} / ${H}`,
       ...(portrait
         ? {
-            height: "min(1000px, min(88dvh, 92svh))",
-            width: `min(96vw, calc(min(1000px, min(88dvh, 92svh)) * ${W / H}))`,
+            height: maxPortraitH,
+            width: `min(96vw, calc(${maxPortraitH} * ${W / H}))`,
             maxWidth: "96vw",
           }
         : {
             width: "min(96vw, 1320px)",
-            maxHeight: "min(88dvh, 92svh)",
+            maxHeight:
+              viewportBand === "full"
+                ? "min(88dvh, 92svh)"
+                : viewportBand === "cozy"
+                  ? "min(76dvh, 86svh)"
+                  : "min(64dvh, 82svh)",
           }),
     };
-  }, [canvasFormat]);
+  }, [canvasFormat, viewportBand]);
 
   const layout = useMemo(() => {
     if (!generated || slots.length < 3 || slots.length > 8) return null;
@@ -366,6 +402,7 @@ export function AutoCollageGenerator() {
       compositionMode,
       canvasFormat.id,
       canvasFormat.compositionKind,
+      layoutEngineOptions,
     );
   }, [
     generated,
@@ -375,6 +412,7 @@ export function AutoCollageGenerator() {
     preset,
     compositionMode,
     canvasFormat,
+    layoutEngineOptions,
   ]);
 
   const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -393,8 +431,10 @@ export function AutoCollageGenerator() {
       return;
     }
     if (slots.length > 8) return;
-    setSalt(Date.now());
-    setGenerated(true);
+    startTransition(() => {
+      setSalt(Date.now());
+      setGenerated(true);
+    });
   };
 
   const onShuffleLayout = () => {
@@ -404,8 +444,10 @@ export function AutoCollageGenerator() {
       return;
     }
     if (slots.length > 8) return;
-    setSalt(Date.now());
-    setGenerated(true);
+    startTransition(() => {
+      setSalt(Date.now());
+      setGenerated(true);
+    });
   };
 
   const captureCollagePng = useCallback(async (): Promise<Blob> => {
@@ -453,9 +495,10 @@ export function AutoCollageGenerator() {
           preset.exportBackgroundColor,
           canvasFormat.exportWidth,
           canvasFormat.exportHeight,
+          screenshotScaleForBand(viewportBand),
         ),
     );
-  }, [layout, preset, canvasFormat]);
+  }, [layout, preset, canvasFormat, viewportBand]);
 
   const onDownload = useCallback(async () => {
     if (!layout) return;
@@ -496,6 +539,74 @@ export function AutoCollageGenerator() {
     setShareChallengeTag(tag);
     setShareOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!portfolioMessage) return;
+    const t = window.setTimeout(() => setPortfolioMessage(null), 5200);
+    return () => window.clearTimeout(t);
+  }, [portfolioMessage]);
+
+  const onSaveToPortfolio = useCallback(async () => {
+    if (!layout) return;
+    setPortfolioBusy(true);
+    setPortfolioMessage(null);
+    setError(null);
+    try {
+      const blob = await captureCollagePng();
+      const imageDataUrl = await blobToDataUrl(blob);
+      let challengeTag: string | undefined;
+      try {
+        const raw = sessionStorage.getItem(SESSION_ACTIVE_FRAGMENT_CHALLENGE_KEY);
+        if (raw?.trim()) challengeTag = raw.trim();
+      } catch {
+        /* private mode */
+      }
+      addPortfolioEntry({
+        id: newPortfolioId(),
+        createdAt: Date.now(),
+        imageDataUrl,
+        moodSentence: mood.trim() || "today feels quiet and blue.",
+        styleId,
+        styleLabel: preset.label,
+        canvasFormatId: canvasFormat.id,
+        canvasFormatLabel: canvasFormat.label,
+        challengeTag,
+      });
+      setPortfolioMessage(
+        "Saved to My Portfolio — scroll down to your visual archive on this device.",
+      );
+      document.getElementById("my-portfolio")?.scrollIntoView({
+        behavior: reduce ? "auto" : "smooth",
+        block: "start",
+      });
+    } catch (err) {
+      const domName = err instanceof DOMException ? err.name : "";
+      const errName = err instanceof Error ? err.name : "";
+      if (domName === "QuotaExceededError" || errName === "QuotaExceededError") {
+        setError(
+          "This browser ran out of space for the portfolio. Try exporting or removing older pieces, then save again.",
+        );
+      } else {
+        const detail = formatExportFailure(err);
+        setError(
+          detail
+            ? `Could not save to portfolio. ${detail}`
+            : "Could not save to portfolio. Try again in a moment.",
+        );
+      }
+    } finally {
+      setPortfolioBusy(false);
+    }
+  }, [
+    layout,
+    captureCollagePng,
+    mood,
+    styleId,
+    preset.label,
+    canvasFormat.id,
+    canvasFormat.label,
+    reduce,
+  ]);
 
   const onShareToCommunity = useCallback(
     async (payload: ShareCommunityFragmentPayload) => {
@@ -626,23 +737,75 @@ export function AutoCollageGenerator() {
     return { justifyContent, shellRect };
   }, [layout, moodTextPositionId]);
 
+  const richMotion = viewportBand === "full" && !reduce;
+  const enterTrans = reduce
+    ? { duration: 0 }
+    : richMotion
+      ? { duration: 1.6, ease: easeSoft }
+      : { duration: 0.4, ease: easeSoft };
+  const enterTransSoft = reduce
+    ? { duration: 0 }
+    : richMotion
+      ? { duration: 1.5, delay: 0.1, ease: easeSoft }
+      : { duration: 0.38, ease: easeSoft };
+  const enterTransBlock = reduce
+    ? { duration: 0 }
+    : richMotion
+      ? { duration: 1.6, delay: 0.15, ease: easeSoft }
+      : { duration: 0.42, delay: 0.04, ease: easeSoft };
+
+  const linedPaperBlur =
+    reduce || viewportBand === "compact"
+      ? undefined
+      : viewportBand === "cozy"
+        ? "blur(0.35px)"
+        : "blur(0.65px)";
+  const scannedPaperBlur =
+    reduce || viewportBand === "compact"
+      ? undefined
+      : viewportBand === "cozy"
+        ? "blur(0.35px)"
+        : "blur(0.75px)";
+  const grainOverlayBlur =
+    reduce || viewportBand === "compact"
+      ? undefined
+      : viewportBand === "cozy"
+        ? "blur(0.45px)"
+        : "blur(0.9px)";
+  const atmosphereOpacity =
+    viewportBand === "full" ? 0.85 : viewportBand === "cozy" ? 0.68 : 0.55;
+  const boardDropShadow =
+    viewportBand === "full"
+      ? `8px 28px 56px var(--shadow), ${preset.innerVignette}`
+      : viewportBand === "cozy"
+        ? `5px 18px 34px var(--shadow), ${preset.innerVignette}`
+        : `3px 12px 24px var(--shadow), ${preset.innerVignette}`;
+  const innerPaperShellClass =
+    viewportBand === "full"
+      ? "shadow-[inset_0_0_48px_rgba(61,56,50,0.045)]"
+      : viewportBand === "cozy"
+        ? "shadow-[inset_0_0_28px_rgba(61,56,50,0.038)]"
+        : "shadow-[inset_0_0_18px_rgba(61,56,50,0.032)]";
+
   return (
     <section
       id="mood-collage-studio"
       className="relative overflow-x-hidden scroll-mt-24 border-t border-ink/10 px-6 py-24 sm:px-10 sm:scroll-mt-28"
       aria-labelledby="auto-collage-heading"
     >
-      <div className="pointer-events-none absolute left-[6%] top-32 hidden h-16 w-16 rotate-12 bg-gradient-to-br from-paper-deep to-blush/40 opacity-50 shadow-md lg:block" />
-      <div className="pointer-events-none absolute right-[8%] top-48 h-12 w-20 -rotate-6 bg-gradient-to-br from-sage/50 to-paper-deep opacity-40 shadow-md" />
+      <StudioSectionScraps band={viewportBand} />
 
-      <div className="mx-auto w-full min-w-0 max-w-3xl">
+      <div className="pointer-events-none absolute left-[6%] top-32 z-[2] hidden h-16 w-16 rotate-12 bg-gradient-to-br from-paper-deep to-blush/40 opacity-50 shadow-md lg:block" />
+      <div className="pointer-events-none absolute right-[8%] top-48 z-[2] hidden h-12 w-20 -rotate-6 bg-gradient-to-br from-sage/50 to-paper-deep opacity-40 shadow-md lg:block" />
+
+      <div className="relative z-10 mx-auto w-full min-w-0 max-w-3xl">
         <motion.h2
           id="auto-collage-heading"
           className="font-display text-center text-3xl font-medium text-ink sm:text-4xl"
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-80px" }}
-          transition={reduce ? { duration: 0 } : { duration: 1.6, ease: easeSoft }}
+          transition={enterTrans}
         >
           Mood collage studio
         </motion.h2>
@@ -651,9 +814,7 @@ export function AutoCollageGenerator() {
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-80px" }}
-          transition={
-            reduce ? { duration: 0 } : { duration: 1.5, delay: 0.1, ease: easeSoft }
-          }
+          transition={enterTransSoft}
         >
           Pick a visual temperament, a composition mode, and a canvas format — then shuffle until
           the page feels like yours.
@@ -664,7 +825,7 @@ export function AutoCollageGenerator() {
           initial={{ opacity: 0, y: 18 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
-          transition={reduce ? { duration: 0 } : { duration: 1.6, delay: 0.15 }}
+          transition={enterTransBlock}
         >
           <fieldset>
             <legend className="font-body text-sm italic text-ink-soft">
@@ -769,7 +930,7 @@ export function AutoCollageGenerator() {
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    layout
+                    layout={richMotion}
                     onClick={() => {
                       setCanvasFormatId(f.id);
                       setError(null);
@@ -1110,7 +1271,7 @@ export function AutoCollageGenerator() {
               onClick={onGenerate}
               disabled={!canGenerate}
               className="font-body rounded-[2px_4px_3px_2px] border border-ink/20 bg-paper-deep/70 px-8 py-3 text-ink shadow-[5px_16px_36px_var(--shadow)] transition-[background-color,opacity] duration-700 hover:bg-blush/45 disabled:cursor-not-allowed disabled:opacity-45"
-              whileHover={reduce || !canGenerate ? {} : { scale: 1.02 }}
+              whileHover={!richMotion || !canGenerate ? {} : { scale: 1.02 }}
               whileTap={reduce || !canGenerate ? {} : { scale: 0.99 }}
             >
               Generate collage
@@ -1120,7 +1281,7 @@ export function AutoCollageGenerator() {
               onClick={onShuffleLayout}
               disabled={!canGenerate}
               className="font-body rounded-[2px_4px_3px_2px] border border-ink/15 bg-cream/75 px-6 py-3 text-sm text-ink-soft shadow-[4px_12px_28px_var(--shadow)] transition-colors duration-700 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-              whileHover={reduce || !canGenerate ? {} : { scale: 1.01 }}
+              whileHover={!richMotion || !canGenerate ? {} : { scale: 1.01 }}
               whileTap={reduce || !canGenerate ? {} : { scale: 0.99 }}
             >
               Shuffle layout
@@ -1129,14 +1290,20 @@ export function AutoCollageGenerator() {
         </motion.div>
       </div>
 
-      <div className="relative mx-auto mt-12 w-full max-w-[min(98vw,1600px)] px-0 sm:px-2">
-        <FloatingBits reduce={!!reduce} />
+      <div className="relative z-10 mx-auto mt-12 w-full max-w-[min(98vw,1600px)] px-0 sm:px-2">
+        <FloatingBits band={viewportBand} reduce={!!reduce} />
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-40px" }}
-          transition={reduce ? { duration: 0 } : { duration: 1.5, ease: easeSoft }}
+          transition={
+            reduce
+              ? { duration: 0 }
+              : richMotion
+                ? { duration: 1.5, ease: easeSoft }
+                : { duration: 0.45, ease: easeSoft }
+          }
           className="relative overflow-hidden py-6 sm:py-10"
         >
           <motion.div
@@ -1146,13 +1313,17 @@ export function AutoCollageGenerator() {
             initial={reduce ? false : { opacity: 0.92 }}
             animate={{ opacity: 1 }}
             transition={
-              reduce ? { duration: 0 } : { duration: 0.5, ease: easeSoft }
+              reduce
+                ? { duration: 0 }
+                : richMotion
+                  ? { duration: 0.5, ease: easeSoft }
+                  : { duration: 0.28, ease: easeSoft }
             }
             className="relative mx-auto overflow-hidden rounded-[4px_6px_5px_3px] border border-ink/10"
             style={{
               ...boardFrameStyle,
               background: preset.boardBackground,
-              boxShadow: `8px 28px 56px var(--shadow), ${preset.innerVignette}`,
+              boxShadow: boardDropShadow,
             }}
             aria-label="Collage canvas"
           >
@@ -1174,7 +1345,7 @@ export function AutoCollageGenerator() {
                     opacity: preset.linedTextureOpacity,
                     backgroundImage:
                       `repeating-linear-gradient(${preset.linedAngleDeg}deg, transparent, transparent 4px, rgba(61,56,50,0.05) 4px, rgba(61,56,50,0.05) 5px)`,
-                    filter: reduce ? undefined : "blur(0.65px)",
+                    filter: linedPaperBlur,
                   }}
                   aria-hidden
                 />
@@ -1184,7 +1355,7 @@ export function AutoCollageGenerator() {
                   style={{
                     background: preset.atmosphereGradient,
                     mixBlendMode: preset.atmosphereBlendMode,
-                    opacity: 0.85,
+                    opacity: atmosphereOpacity,
                   }}
                   aria-hidden
                 />
@@ -1195,7 +1366,7 @@ export function AutoCollageGenerator() {
                     opacity: Math.min(0.92, preset.scannedPaperOpacity + 0.04),
                     mixBlendMode: "multiply",
                     backgroundImage: `repeating-linear-gradient(${preset.scannedAngleDeg}deg, rgba(61,56,50,0.022) 0px, rgba(61,56,50,0.022) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(90deg, rgba(255,252,248,0.028) 0px, transparent 2px, transparent 6px)`,
-                    filter: reduce ? undefined : "blur(0.75px)",
+                    filter: scannedPaperBlur,
                   }}
                   aria-hidden
                 />
@@ -1210,7 +1381,9 @@ export function AutoCollageGenerator() {
                   aria-hidden
                 />
 
-                <div className="absolute inset-[1.8%] overflow-hidden rounded-[2px_3px_2px_2px] shadow-[inset_0_0_48px_rgba(61,56,50,0.045)]">
+                <div
+                  className={`absolute inset-[1.8%] overflow-hidden rounded-[2px_3px_2px_2px] ${innerPaperShellClass}`}
+                >
                 <svg
                   className="pointer-events-none absolute h-0 w-0 overflow-hidden"
                   aria-hidden
@@ -1250,7 +1423,11 @@ export function AutoCollageGenerator() {
                   <div
                     key={`scrap-${salt}-${i}`}
                     className={`torn pointer-events-none absolute ${
-                      s.zIndex < 22 ? "shadow-sm" : "shadow-[6px_18px_32px_rgba(45,40,35,0.22)]"
+                      viewportBand === "full"
+                        ? s.zIndex < 22
+                          ? "shadow-sm"
+                          : "shadow-[6px_18px_32px_rgba(45,40,35,0.22)]"
+                        : "shadow-sm"
                     }`}
                     style={{
                       left: `${s.leftPct}%`,
@@ -1305,11 +1482,23 @@ export function AutoCollageGenerator() {
                       transition={
                         reduce
                           ? { duration: 0 }
-                          : {
-                              delay: i * 0.07,
-                              duration: 1.2,
-                              ease: easeSoft,
-                            }
+                          : richMotion
+                            ? {
+                                delay: i * 0.07,
+                                duration: 1.2,
+                                ease: easeSoft,
+                              }
+                            : viewportBand === "cozy"
+                              ? {
+                                  delay: i * 0.04,
+                                  duration: 0.55,
+                                  ease: easeSoft,
+                                }
+                              : {
+                                  delay: i * 0.02,
+                                  duration: 0.34,
+                                  ease: easeSoft,
+                                }
                       }
                     >
                       <div className="relative h-full w-full">
@@ -1322,7 +1511,10 @@ export function AutoCollageGenerator() {
                             zIndex: 0,
                             transform: `translate(-50%, -50%) rotate(${p.behindRotate}deg)`,
                             background: preset.behindGradient,
-                            boxShadow: "5px 18px 30px rgba(61,56,50,0.15)",
+                            boxShadow:
+                              viewportBand === "full"
+                                ? "5px 18px 30px rgba(61,56,50,0.15)"
+                                : "2px 10px 18px rgba(61,56,50,0.1)",
                           }}
                           aria-hidden
                         />
@@ -1341,8 +1533,10 @@ export function AutoCollageGenerator() {
                           <img
                             src={url}
                             alt=""
-                            className="relative z-0 h-full w-full min-h-0 flex-1 object-cover"
+                            className="relative z-0 h-full w-full min-h-0 flex-1 object-cover [image-rendering:auto]"
                             draggable={false}
+                            decoding="async"
+                            fetchPriority={i === layout.focalIndex ? "high" : "auto"}
                             style={{
                               opacity: p.opacity,
                               filter: imgFilter.join(" "),
@@ -1442,7 +1636,7 @@ export function AutoCollageGenerator() {
                     opacity: preset.grainSvgOpacity,
                     mixBlendMode: "multiply",
                     backgroundImage: GRAIN_DATA_URI,
-                    filter: reduce ? undefined : "blur(0.9px)",
+                    filter: grainOverlayBlur,
                   }}
                   aria-hidden
                 />
@@ -1451,38 +1645,61 @@ export function AutoCollageGenerator() {
           </motion.div>
 
           {showCollageLayers && layout && (
-            <div className="mx-auto mt-12 flex max-w-3xl flex-col items-stretch gap-3 px-4 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4">
-              <motion.button
-                type="button"
-                onClick={onDownload}
-                disabled={exporting}
-                className="font-body rounded-[2px_4px_3px_2px] border border-ink/18 bg-cream/85 px-6 py-3 text-sm text-ink shadow-[4px_14px_30px_var(--shadow)] transition-[background-color,border-color] duration-700 hover:border-ink/24 hover:bg-paper-deep/55 disabled:opacity-45"
-                whileHover={reduce || exporting ? {} : { scale: 1.01 }}
-                whileTap={reduce || exporting ? {} : { scale: 0.99 }}
-              >
-                {exporting
-                  ? "Saving…"
-                  : `Download PNG · ${canvasFormat.exportWidth}×${canvasFormat.exportHeight}`}
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={onShuffleLayout}
-                disabled={!canGenerate}
-                className="font-body rounded-[2px_4px_3px_2px] border border-ink/14 bg-paper-deep/50 px-6 py-3 text-sm text-ink-soft shadow-inner transition-colors duration-700 hover:border-ink/20 hover:bg-cream/80 hover:text-ink disabled:opacity-40"
-                whileTap={reduce || !canGenerate ? {} : { scale: 0.99 }}
-              >
-                Regenerate
-              </motion.button>
-              <motion.button
-                type="button"
-                onClick={openShareModal}
-                disabled={shareBusy}
-                className="font-body rounded-[2px_4px_3px_2px] border border-ink/16 bg-blush/35 px-6 py-3 text-sm text-ink shadow-[4px_14px_28px_var(--shadow)] transition-[background-color,border-color] duration-700 hover:border-ink/22 hover:bg-blush/50 disabled:opacity-45"
-                whileHover={reduce ? {} : { scale: 1.01 }}
-                whileTap={reduce ? {} : { scale: 0.99 }}
-              >
-                Share to Community Fragments
-              </motion.button>
+            <div className="mx-auto mt-12 flex max-w-3xl flex-col items-stretch gap-4 px-4">
+              <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4">
+                <motion.button
+                  type="button"
+                  onClick={onDownload}
+                  disabled={exporting || portfolioBusy}
+                  className="font-body rounded-[2px_4px_3px_2px] border border-ink/18 bg-cream/85 px-6 py-3 text-sm text-ink shadow-[4px_14px_30px_var(--shadow)] transition-[background-color,border-color] duration-700 hover:border-ink/24 hover:bg-paper-deep/55 disabled:opacity-45"
+                  whileHover={!richMotion || exporting ? {} : { scale: 1.01 }}
+                  whileTap={reduce || exporting ? {} : { scale: 0.99 }}
+                >
+                  {exporting
+                    ? "Saving…"
+                    : `Download PNG · ${canvasFormat.exportWidth}×${canvasFormat.exportHeight}`}
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={openShareModal}
+                  disabled={shareBusy || portfolioBusy}
+                  className="font-body rounded-[2px_4px_3px_2px] border border-ink/16 bg-blush/35 px-6 py-3 text-sm text-ink shadow-[4px_14px_28px_var(--shadow)] transition-[background-color,border-color] duration-700 hover:border-ink/22 hover:bg-blush/50 disabled:opacity-45"
+                  whileHover={!richMotion ? {} : { scale: 1.01 }}
+                  whileTap={reduce ? {} : { scale: 0.99 }}
+                >
+                  Share to Community Fragments
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={() => void onSaveToPortfolio()}
+                  disabled={portfolioBusy || exporting || shareBusy}
+                  className="font-body rounded-[2px_4px_3px_2px] border border-ink/14 bg-paper-deep/55 px-6 py-3 text-sm text-ink shadow-inner transition-[background-color,border-color] duration-700 hover:border-ink/22 hover:bg-cream/85 disabled:opacity-45"
+                  whileHover={!richMotion || portfolioBusy ? {} : { scale: 1.01 }}
+                  whileTap={reduce || portfolioBusy ? {} : { scale: 0.99 }}
+                >
+                  {portfolioBusy ? "Saving to portfolio…" : "Save to My Portfolio"}
+                </motion.button>
+              </div>
+              <div className="flex justify-center">
+                <motion.button
+                  type="button"
+                  onClick={onShuffleLayout}
+                  disabled={!canGenerate || portfolioBusy}
+                  className="font-body rounded-[2px_4px_3px_2px] border border-ink/14 bg-paper-deep/50 px-6 py-2.5 text-sm text-ink-soft shadow-inner transition-colors duration-700 hover:border-ink/20 hover:bg-cream/80 hover:text-ink disabled:opacity-40"
+                  whileTap={reduce || !canGenerate ? {} : { scale: 0.99 }}
+                >
+                  Regenerate layout
+                </motion.button>
+              </div>
+              {portfolioMessage && (
+                <p
+                  className="font-body text-center text-sm italic text-ink/80"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {portfolioMessage}
+                </p>
+              )}
             </div>
           )}
 
@@ -1501,35 +1718,87 @@ export function AutoCollageGenerator() {
   );
 }
 
-function FloatingBits({ reduce }: { reduce: boolean }) {
+/** Decorative torn-paper scraps framing the studio (not part of export). */
+function StudioSectionScraps({ band }: { band: ViewportEffectsBand }) {
+  const showMid = band === "cozy" || band === "full";
+  const showRich = band === "full";
+
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+      aria-hidden
+    >
+      <div
+        className="torn absolute left-[0.5%] top-[8rem] h-10 w-[2.75rem] max-w-[12vw] -rotate-[10deg] bg-gradient-to-br from-paper-deep/92 to-blush/50 opacity-[0.44] shadow-sm mix-blend-multiply ring-1 ring-ink/[0.05] sm:left-[2%] sm:top-[9.5rem] sm:h-11 sm:w-12"
+      />
+      <div
+        className="torn absolute right-[1%] top-[11rem] h-9 w-14 max-w-[14vw] rotate-[12deg] bg-gradient-to-bl from-sage/65 to-paper-deep/85 opacity-[0.4] shadow-sm mix-blend-multiply ring-1 ring-ink/[0.04] sm:right-[3%]"
+      />
+
+      {showMid && (
+        <>
+          <div
+            className="torn absolute bottom-[38%] left-[4%] hidden h-14 w-10 -rotate-[6deg] bg-gradient-to-br from-[#dcd4c8]/90 to-paper-deep/75 opacity-[0.36] shadow-sm mix-blend-multiply ring-1 ring-ink/[0.04] sm:block md:bottom-[34%] md:left-[5%]"
+          />
+          <div
+            className="torn absolute bottom-[42%] right-[3%] h-11 w-[2.6rem] max-w-[11vw] rotate-[9deg] bg-gradient-to-br from-blush/55 to-cream/80 opacity-[0.38] shadow-sm mix-blend-multiply ring-1 ring-ink/[0.035] sm:right-[6%]"
+          />
+          <div
+            className="torn absolute left-[8%] top-[52%] h-9 w-16 max-w-[28vw] -rotate-[4deg] bg-gradient-to-r from-paper-deep/80 via-blush/35 to-transparent opacity-[0.32] mix-blend-multiply sm:top-[48%] md:left-[10%]"
+          />
+        </>
+      )}
+
+      {showRich && (
+        <>
+          <div className="torn absolute left-[12%] top-[28%] hidden h-12 w-11 rotate-[11deg] bg-gradient-to-br from-cream/90 to-sage/40 opacity-[0.33] shadow-[3px_10px_18px_rgba(61,56,50,0.08)] mix-blend-multiply ring-1 ring-ink/[0.04] lg:block" />
+          <div className="torn absolute right-[10%] top-[36%] hidden h-10 w-20 max-w-[18vw] -rotate-[8deg] bg-gradient-to-bl from-paper-deep/88 to-[#c9bba8]/70 opacity-[0.34] shadow-sm mix-blend-multiply ring-1 ring-ink/[0.05] md:block" />
+          <div className="torn absolute bottom-[12%] right-[12%] hidden h-14 w-12 rotate-[7deg] bg-gradient-to-br from-blush/50 to-paper-deep/82 opacity-[0.36] shadow-sm mix-blend-multiply ring-1 ring-ink/[0.04] lg:block" />
+          <div className="torn absolute bottom-[20%] left-[14%] hidden h-8 w-24 max-w-[20vw] -rotate-[3deg] bg-gradient-to-r from-sage/45 via-paper-deep/60 to-transparent opacity-[0.28] mix-blend-multiply xl:block" />
+        </>
+      )}
+    </div>
+  );
+}
+
+function FloatingBits({
+  band,
+  reduce,
+}: {
+  band: ViewportEffectsBand;
+  reduce: boolean;
+}) {
+  const drift = band === "full" && !reduce;
   return (
     <>
       <motion.div
         className="pointer-events-none absolute -left-2 top-[8%] h-10 w-14 rotate-[-14deg] bg-gradient-to-br from-paper-deep to-blush/50 opacity-55 shadow-md sm:left-0"
         aria-hidden
-        animate={
-          reduce
-            ? {}
-            : { y: [0, -6, 3, 0], rotate: [-14, -12, -15, -14] }
+        animate={drift ? { y: [0, -6, 3, 0], rotate: [-14, -12, -15, -14] } : false}
+        transition={
+          drift
+            ? {
+                duration: 14,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }
+            : { duration: 0 }
         }
-        transition={{
-          duration: 14,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
       />
       <motion.div
         className="pointer-events-none absolute -right-1 bottom-[12%] h-12 w-12 rotate-[18deg] rounded-sm bg-gradient-to-br from-sage/60 to-paper-deep opacity-50 shadow-md sm:right-0"
         aria-hidden
-        animate={
-          reduce ? {} : { y: [0, 5, -4, 0], rotate: [18, 20, 16, 18] }
+        animate={drift ? { y: [0, 5, -4, 0], rotate: [18, 20, 16, 18] } : false}
+        transition={
+          drift
+            ? {
+                duration: 16,
+                repeat: Infinity,
+                ease: "easeInOut",
+                delay: 0.5,
+              }
+            : { duration: 0 }
         }
-        transition={{
-          duration: 16,
-          repeat: Infinity,
-          ease: "easeInOut",
-          delay: 0.5,
-        }}
       />
     </>
   );

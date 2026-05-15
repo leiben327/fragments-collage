@@ -1,6 +1,7 @@
 import { AutoCollageGenerator } from "./components/AutoCollageGenerator";
 import { RandomFragmentChallenge } from "./components/RandomFragmentChallenge";
 import { CollageHero } from "./components/CollageHero";
+import { MyPortfolio } from "./components/MyPortfolio";
 import { CommunityGallery } from "./components/CommunityGallery";
 
 export default function Home() {
@@ -33,6 +34,12 @@ export default function Home() {
             collage
           </a>
           <a
+            href="#my-portfolio"
+            className="transition-colors duration-700 hover:text-ink"
+          >
+            portfolio
+          </a>
+          <a
             href="#gallery-heading"
             className="transition-colors duration-700 hover:text-ink"
           >
@@ -45,6 +52,7 @@ export default function Home() {
         <CollageHero />
         <RandomFragmentChallenge />
         <AutoCollageGenerator />
+        <MyPortfolio />
         <CommunityGallery />
       </main>
 

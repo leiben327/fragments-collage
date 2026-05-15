@@ -2,6 +2,10 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { startTransition, useEffect, useMemo, useState } from "react";
+import {
+  useViewportEffectsBand,
+  type ViewportEffectsBand,
+} from "@/app/lib/useViewportEffectsBand";
 
 const PHRASES: { line: string; whisper: string }[] = [
   {
@@ -115,8 +119,56 @@ function pickKinds(n: number, rng: () => number): FragmentKind[] {
   return out;
 }
 
-function buildFragments(mobile: boolean, rng: () => number): MemoryFragment[] {
-  const n = mobile ? 9 : 15;
+function countsForBand(band: ViewportEffectsBand) {
+  switch (band) {
+    case "full":
+      return { fragments: 14, botanicals: 8 };
+    case "cozy":
+      return { fragments: 9, botanicals: 5 };
+    case "compact":
+      return { fragments: 6, botanicals: 3 };
+  }
+}
+
+/** Central band where challenge copy + buttons sit — keep fragments visually lighter here */
+const FRAGMENT_SAFE_X0 = 24;
+const FRAGMENT_SAFE_X1 = 76;
+const FRAGMENT_SAFE_Y0 = 34;
+const FRAGMENT_SAFE_Y1 = 68;
+
+function isInFragmentSafeZone(xPct: number, yPct: number) {
+  return (
+    xPct >= FRAGMENT_SAFE_X0 &&
+    xPct <= FRAGMENT_SAFE_X1 &&
+    yPct >= FRAGMENT_SAFE_Y0 &&
+    yPct <= FRAGMENT_SAFE_Y1
+  );
+}
+
+/** Nudge outward from (50,50) until outside the UI safe rectangle (or give up). */
+function nudgeFragmentOutOfSafeZone(
+  xPct: number,
+  yPct: number,
+  rng: () => number,
+): { xPct: number; yPct: number } {
+  let x = xPct;
+  let y = yPct;
+  let guard = 0;
+  while (isInFragmentSafeZone(x, y) && guard++ < 28) {
+    const k = 1.08 + rng() * 0.06;
+    x = 50 + (x - 50) * k;
+    y = 50 + (y - 50) * k;
+  }
+  if (isInFragmentSafeZone(x, y)) {
+    const toLeft = rng() < 0.5;
+    x = toLeft ? rand(rng, 4, FRAGMENT_SAFE_X0 - 2) : rand(rng, FRAGMENT_SAFE_X1 + 2, 96);
+    y = rand(rng, 10, 90);
+  }
+  return { xPct: x, yPct: y };
+}
+
+function buildFragments(band: ViewportEffectsBand, rng: () => number): MemoryFragment[] {
+  const n = countsForBand(band).fragments;
   const kinds = pickKinds(n, rng);
   const used = new Set<number>();
 
@@ -132,17 +184,27 @@ function buildFragments(mobile: boolean, rng: () => number): MemoryFragment[] {
 
   const items: MemoryFragment[] = [];
 
+  const radMin = band === "compact" ? 30 : band === "cozy" ? 32 : 34;
+  const radMax = band === "compact" ? 48 : band === "cozy" ? 54 : 58;
+
   for (let i = 0; i < n; i++) {
-    const angle = i * 137.5 + rand(rng, -20, 55);
-    const rad = (mobile ? 26 : 20) + rand(rng, 0, 38);
-    const xPct =
-      48 +
-      Math.cos((angle * Math.PI) / 180) * rad * 0.62 +
-      rand(rng, -22, 22);
-    const yPct =
+    // Even angular spacing + jitter so pieces ring the viewport instead of bunching mid-screen
+    const baseAngle = (i / Math.max(1, n)) * 360;
+    const angle = baseAngle + rand(rng, -38, 38);
+    const rad = rand(rng, radMin, radMax);
+    let xPct =
       50 +
-      Math.sin((angle * Math.PI) / 180) * rad * 0.48 +
-      rand(rng, -26, 26);
+      Math.cos((angle * Math.PI) / 180) * rad * 0.82 +
+      rand(rng, -11, 11);
+    let yPct =
+      50 +
+      Math.sin((angle * Math.PI) / 180) * rad * 0.66 +
+      rand(rng, -12, 12);
+
+    const nudged = nudgeFragmentOutOfSafeZone(xPct, yPct, rng);
+    xPct = nudged.xPct;
+    yPct = nudged.yPct;
+
     const phrase = takePhrase();
     const driftAmpX = 5 + rng() * 12;
     const driftAmpY = 7 + rng() * 16;
@@ -153,7 +215,7 @@ function buildFragments(mobile: boolean, rng: () => number): MemoryFragment[] {
       kind: kinds[i] ?? "note",
       xPct: Math.min(97, Math.max(3, xPct)),
       yPct: Math.min(94, Math.max(6, yPct)),
-      wPx: mobile ? 92 + rng() * 80 : 108 + rng() * 120,
+      wPx: band === "compact" ? 88 + rng() * 72 : 108 + rng() * 120,
       rotate: r0,
       driftX: [0, driftAmpX * (rng() < 0.5 ? 1 : -1), driftAmpX * 0.35, 0],
       driftY: [0, -driftAmpY * 0.75, driftAmpY * 0.55, 0],
@@ -169,24 +231,39 @@ function buildFragments(mobile: boolean, rng: () => number): MemoryFragment[] {
         0.44 + rng() * 0.12,
         0.38 + rng() * 0.18,
       ] as [number, number, number, number],
-      blurIdle: rng() > 0.62 ? 0.25 + rng() * 0.35 : 0,
+      blurIdle:
+        band !== "full" ? 0 : rng() > 0.62 ? 0.25 + rng() * 0.35 : 0,
     });
   }
 
   return items;
 }
 
-function buildBotanicals(mobile: boolean, rng: () => number): BotanicalSprig[] {
-  const n = mobile ? 5 : 8;
+function buildBotanicals(band: ViewportEffectsBand, rng: () => number): BotanicalSprig[] {
+  const n = countsForBand(band).botanicals;
   const items: BotanicalSprig[] = [];
   for (let i = 0; i < n; i++) {
     const r0 = -25 + rng() * 50;
     const driftAmpX = 3 + rng() * 8;
     const driftAmpY = 5 + rng() * 12;
+    let xPct: number;
+    let yPct: number;
+    if (rng() < 0.62) {
+      const side = rng() < 0.5 ? "left" : "right";
+      xPct = side === "left" ? rand(rng, 3, 26) : rand(rng, 74, 97);
+      yPct = rand(rng, 8, 92);
+    } else {
+      const row = rng() < 0.5 ? "top" : "bottom";
+      yPct = row === "top" ? rand(rng, 6, 28) : rand(rng, 72, 93);
+      xPct = rand(rng, 6, 94);
+    }
+    const nudged = nudgeFragmentOutOfSafeZone(xPct, yPct, rng);
+    xPct = nudged.xPct;
+    yPct = nudged.yPct;
     items.push({
       id: `bot-${i}-${Math.floor(rng() * 1e9).toString(36)}`,
-      xPct: rand(rng, 4, 96),
-      yPct: rand(rng, 8, 92),
+      xPct: Math.min(97, Math.max(3, xPct)),
+      yPct: Math.min(94, Math.max(6, yPct)),
       scale: 0.55 + rng() * 0.85,
       rotate: r0,
       driftX: [0, driftAmpX * (rng() < 0.5 ? 1 : -1), driftAmpX * 0.3, 0],
@@ -213,23 +290,24 @@ export function FloatingMemoryArchive({
   activateAriaHint = "Go to collage table.",
 }: FloatingMemoryArchiveProps) {
   const reduce = useReducedMotion();
+  const band = useViewportEffectsBand();
   const [fragments, setFragments] = useState<MemoryFragment[] | null>(null);
   const [botanicals, setBotanicals] = useState<BotanicalSprig[] | null>(null);
 
   useEffect(() => {
     startTransition(() => {
-      const mobile = window.innerWidth < 640;
       const seed =
         ((typeof performance !== "undefined" ? performance.now() : 0) ^
           (Math.random() * 0xffffffff)) >>>
         0;
       const rng = mulberry32(seed >>> 0);
-      setFragments(buildFragments(mobile, rng));
-      setBotanicals(buildBotanicals(mobile, rng));
+      setFragments(buildFragments(band, rng));
+      setBotanicals(buildBotanicals(band, rng));
     });
-  }, []);
+  }, [band]);
 
   const easeDrift = useMemo(() => [0.42, 0, 0.58, 1] as const, []);
+  const lite = band !== "full";
 
   return (
     <>
@@ -240,7 +318,7 @@ export function FloatingMemoryArchive({
       )}
 
       {botanicals?.map((b) => (
-        <BotanicalPiece key={b.id} b={b} reduce={!!reduce} easeDrift={easeDrift} />
+        <BotanicalPiece key={b.id} b={b} reduce={!!reduce} lite={lite} easeDrift={easeDrift} />
       ))}
 
       {fragments?.map((f) => (
@@ -248,6 +326,7 @@ export function FloatingMemoryArchive({
           key={f.id}
           f={f}
           reduce={!!reduce}
+          lite={lite}
           easeDrift={easeDrift}
           onActivate={onActivate}
           activateAriaHint={activateAriaHint}
@@ -260,10 +339,12 @@ export function FloatingMemoryArchive({
 function BotanicalPiece({
   b,
   reduce,
+  lite,
   easeDrift,
 }: {
   b: BotanicalSprig;
   reduce: boolean;
+  lite: boolean;
   easeDrift: readonly [number, number, number, number];
 }) {
   return (
@@ -280,7 +361,7 @@ function BotanicalPiece({
       aria-hidden
       initial={{ opacity: 0 }}
       animate={
-        reduce
+        reduce || lite
           ? { opacity: 0.2, x: 0, y: 0, rotate: b.rotate }
           : {
               opacity: b.opacity,
@@ -290,7 +371,7 @@ function BotanicalPiece({
             }
       }
       transition={
-        reduce
+        reduce || lite
           ? { duration: 0.8 }
           : {
               opacity: {
@@ -411,12 +492,14 @@ function SprigSvg({ variant }: { variant: number }) {
 function FragmentPiece({
   f,
   reduce,
+  lite,
   easeDrift,
   onActivate,
   activateAriaHint,
 }: {
   f: MemoryFragment;
   reduce: boolean;
+  lite: boolean;
   easeDrift: readonly [number, number, number, number];
   onActivate: () => void;
   activateAriaHint: string;
@@ -438,7 +521,7 @@ function FragmentPiece({
       onClick={onActivate}
       initial={{ opacity: 0 }}
       animate={
-        reduce
+        reduce || lite
           ? { opacity: 1, x: 0, y: 0, rotate: f.rotate }
           : {
               opacity: f.opacityPulse,
@@ -448,7 +531,7 @@ function FragmentPiece({
             }
       }
       transition={
-        reduce
+        reduce || lite
           ? { duration: 0.6 }
           : {
               opacity: {
@@ -478,7 +561,7 @@ function FragmentPiece({
             }
       }
       whileHover={
-        reduce
+        reduce || lite
           ? {}
           : {
               scale: 1.06,
@@ -488,27 +571,35 @@ function FragmentPiece({
       whileTap={{ scale: 0.97 }}
     >
       <div
-        className={`relative transition-[box-shadow,filter] duration-[1000ms] ease-out group-hover:shadow-[0_0_48px_rgba(232,212,207,0.5),10px_32px_52px_rgba(61,56,50,0.14)] ${
-          f.blurIdle > 0 ? "blur-[0.35px] group-hover:blur-none" : ""
-        }`}
+        className={`relative ${
+          lite
+            ? "shadow-sm"
+            : "transition-[box-shadow,filter] duration-[1000ms] ease-out group-hover:shadow-[0_0_48px_rgba(232,212,207,0.5),10px_32px_52px_rgba(61,56,50,0.14)]"
+        } ${f.blurIdle > 0 && !lite ? "blur-[0.35px] group-hover:blur-none" : ""}`}
       >
-        <div className="pointer-events-none absolute -inset-4 rounded-[45%] bg-blush/0 opacity-0 blur-3xl transition-opacity duration-[1000ms] group-hover:bg-blush/20 group-hover:opacity-100" />
+        {!lite && (
+          <div className="pointer-events-none absolute -inset-4 rounded-[45%] bg-blush/0 opacity-0 blur-3xl transition-opacity duration-[1000ms] group-hover:bg-blush/20 group-hover:opacity-100" />
+        )}
 
-        {f.kind === "note" && <PieceNote f={f} />}
-        {f.kind === "polaroid" && <PiecePolaroid f={f} />}
-        {f.kind === "typewriter" && <PieceTypewriter f={f} />}
-        {f.kind === "tape" && <PieceTape f={f} />}
-        {f.kind === "scrap" && <PieceScrap f={f} />}
-        {f.kind === "journal" && <PieceJournal f={f} />}
-        {f.kind === "photo" && <PiecePhoto f={f} />}
+        {f.kind === "note" && <PieceNote f={f} lite={lite} />}
+        {f.kind === "polaroid" && <PiecePolaroid f={f} lite={lite} />}
+        {f.kind === "typewriter" && <PieceTypewriter f={f} lite={lite} />}
+        {f.kind === "tape" && <PieceTape f={f} lite={lite} />}
+        {f.kind === "scrap" && <PieceScrap f={f} lite={lite} />}
+        {f.kind === "journal" && <PieceJournal f={f} lite={lite} />}
+        {f.kind === "photo" && <PiecePhoto f={f} lite={lite} />}
       </div>
     </motion.button>
   );
 }
 
-function PieceNote({ f }: { f: MemoryFragment }) {
+function PieceNote({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
-    <div className="torn relative bg-gradient-to-br from-cream/95 to-paper-deep/78 px-4 py-4 shadow-[6px_24px_42px_rgba(61,56,50,0.12)] ring-1 ring-ink/6">
+    <div
+      className={`torn relative bg-gradient-to-br from-cream/95 to-paper-deep/78 px-4 py-4 ring-1 ring-ink/6 ${
+        lite ? "shadow-sm" : "shadow-[6px_24px_42px_rgba(61,56,50,0.12)]"
+      }`}
+    >
       <p className="font-hand-indie text-[clamp(1rem,2.2vw,1.28rem)] leading-snug text-ink/88">
         {f.line}
       </p>
@@ -519,11 +610,19 @@ function PieceNote({ f }: { f: MemoryFragment }) {
   );
 }
 
-function PiecePolaroid({ f }: { f: MemoryFragment }) {
+function PiecePolaroid({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
-    <div className="relative rounded-[2px_3px_2px_2px] bg-cream/88 p-2 pb-9 shadow-[8px_28px_46px_rgba(61,56,50,0.15)] ring-1 ring-white/35">
+    <div
+      className={`relative rounded-[2px_3px_2px_2px] bg-cream/88 p-2 pb-9 ring-1 ring-white/35 ${
+        lite ? "shadow-sm" : "shadow-[8px_28px_46px_rgba(61,56,50,0.15)]"
+      }`}
+    >
       <div className="relative aspect-[1/1.05] overflow-hidden bg-gradient-to-br from-paper-deep via-blush/22 to-[#cfc4b4] opacity-[0.82]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_32%_22%,rgba(255,255,255,0.32),transparent_55%)] mix-blend-soft-light" />
+        <div
+          className={`absolute inset-0 bg-[radial-gradient(circle_at_32%_22%,rgba(255,255,255,0.32),transparent_55%)] mix-blend-soft-light ${
+            lite ? "opacity-70" : ""
+          }`}
+        />
       </div>
       <p className="font-caption absolute bottom-2 left-2 right-2 text-center text-[0.7rem] leading-tight text-ink/72">
         {f.line}
@@ -535,9 +634,13 @@ function PiecePolaroid({ f }: { f: MemoryFragment }) {
   );
 }
 
-function PieceTypewriter({ f }: { f: MemoryFragment }) {
+function PieceTypewriter({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
-    <div className="relative border border-ink/10 bg-paper/75 px-3 py-3 shadow-[4px_18px_30px_rgba(61,56,50,0.08)]">
+    <div
+      className={`relative border border-ink/10 bg-paper/75 px-3 py-3 ${
+        lite ? "shadow-sm" : "shadow-[4px_18px_30px_rgba(61,56,50,0.08)]"
+      }`}
+    >
       <p className="font-editorial text-[10px] uppercase tracking-[0.24em] text-ink-soft/88">
         {f.line}
       </p>
@@ -548,15 +651,16 @@ function PieceTypewriter({ f }: { f: MemoryFragment }) {
   );
 }
 
-function PieceTape({ f }: { f: MemoryFragment }) {
+function PieceTape({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
     <div
       className="relative px-2 py-4 opacity-[0.88] shadow-sm"
       style={{
         background:
           "linear-gradient(90deg, rgba(250,247,242,0.2) 0%, rgba(232,212,207,0.72) 45%, rgba(245,236,228,0.28) 100%)",
-        boxShadow:
-          "inset 0 0 0 1px rgba(61,56,50,0.05), 0 2px 8px rgba(61,56,50,0.08)",
+        boxShadow: lite
+          ? "inset 0 0 0 1px rgba(61,56,50,0.04), 0 1px 4px rgba(61,56,50,0.06)"
+          : "inset 0 0 0 1px rgba(61,56,50,0.05), 0 2px 8px rgba(61,56,50,0.08)",
       }}
     >
       <p className="font-hand-indie text-center text-sm leading-snug text-ink/78">
@@ -569,9 +673,13 @@ function PieceTape({ f }: { f: MemoryFragment }) {
   );
 }
 
-function PieceScrap({ f }: { f: MemoryFragment }) {
+function PieceScrap({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
-    <div className="torn h-24 w-full bg-gradient-to-br from-paper-deep/88 to-[#c9bba8]/88 opacity-80 shadow-md ring-1 ring-ink/5">
+    <div
+      className={`torn h-24 w-full bg-gradient-to-br from-paper-deep/88 to-[#c9bba8]/88 opacity-80 ring-1 ring-ink/5 ${
+        lite ? "shadow-sm" : "shadow-md"
+      }`}
+    >
       <p className="font-hand-indie absolute inset-x-2 bottom-3 text-xs leading-snug text-ink/78">
         {f.line}
       </p>
@@ -582,11 +690,15 @@ function PieceScrap({ f }: { f: MemoryFragment }) {
   );
 }
 
-function PieceJournal({ f }: { f: MemoryFragment }) {
+function PieceJournal({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
-    <div className="relative min-h-[5.5rem] border border-ink/8 bg-cream/65 px-3 py-3 shadow-inner">
+    <div
+      className={`relative min-h-[5.5rem] border border-ink/8 bg-cream/65 px-3 py-3 ${
+        lite ? "shadow-sm" : "shadow-inner"
+      }`}
+    >
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.1]"
+        className={`pointer-events-none absolute inset-0 ${lite ? "opacity-[0.06]" : "opacity-[0.1]"}`}
         style={{
           backgroundImage:
             "repeating-linear-gradient(0deg, transparent, transparent 11px, rgba(61,56,50,0.055) 11px, rgba(61,56,50,0.055) 12px)",
@@ -602,11 +714,19 @@ function PieceJournal({ f }: { f: MemoryFragment }) {
   );
 }
 
-function PiecePhoto({ f }: { f: MemoryFragment }) {
+function PiecePhoto({ f, lite }: { f: MemoryFragment; lite: boolean }) {
   return (
     <div className="relative">
-      <div className="absolute inset-0 translate-x-2 translate-y-2 rotate-2 rounded-sm bg-ink/8 opacity-35 blur-[0.5px]" />
-      <div className="relative overflow-hidden rounded-[2px] border border-white/45 bg-gradient-to-br from-paper-deep/45 to-blush/28 opacity-[0.68] shadow-[6px_22px_38px_rgba(61,56,50,0.14)] ring-1 ring-ink/8">
+      <div
+        className={`absolute inset-0 translate-x-2 translate-y-2 rotate-2 rounded-sm bg-ink/8 opacity-35 ${
+          lite ? "" : "blur-[0.5px]"
+        }`}
+      />
+      <div
+        className={`relative overflow-hidden rounded-[2px] border border-white/45 bg-gradient-to-br from-paper-deep/45 to-blush/28 opacity-[0.68] ring-1 ring-ink/8 ${
+          lite ? "shadow-sm" : "shadow-[6px_22px_38px_rgba(61,56,50,0.14)]"
+        }`}
+      >
         <div className="aspect-[4/5] w-full bg-[radial-gradient(ellipse_at_50%_38%,rgba(255,252,248,0.35),transparent_62%)]" />
         <p className="font-caption absolute bottom-2 left-2 right-2 text-center text-[0.68rem] text-ink/68">
           {f.line}

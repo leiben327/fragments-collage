@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { ArchivalTableBackdrop } from "./ArchivalTableBackdrop";
 import { FloatingMemoryArchive } from "./FloatingMemoryArchive";
 import { SESSION_ACTIVE_FRAGMENT_CHALLENGE_KEY } from "@/app/lib/communityFragmentKeys";
+import { useViewportEffectsBand } from "@/app/lib/useViewportEffectsBand";
 
 const easeSoft = [0.22, 1, 0.36, 1] as const;
 
@@ -37,6 +38,8 @@ function pickChallenge(exclude: string | null): string {
 
 export function RandomFragmentChallenge() {
   const reduce = useReducedMotion();
+  const viewportBand = useViewportEffectsBand();
+  const richMotion = viewportBand === "full" && !reduce;
   const [challenge, setChallenge] = useState<string | null>(null);
 
   const draw = useCallback(() => {
@@ -82,7 +85,13 @@ export function RandomFragmentChallenge() {
           initial={{ opacity: 0, y: 10 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-70px" }}
-          transition={reduce ? { duration: 0 } : { duration: 1.4, ease: easeSoft }}
+          transition={
+            reduce
+              ? { duration: 0 }
+              : richMotion
+                ? { duration: 1.4, ease: easeSoft }
+                : { duration: 0.4, ease: easeSoft }
+          }
         >
           Random Fragment Challenge
         </motion.h2>
@@ -92,7 +101,11 @@ export function RandomFragmentChallenge() {
           whileInView={{ opacity: 1 }}
           viewport={{ once: true, margin: "-70px" }}
           transition={
-            reduce ? { duration: 0 } : { duration: 1.3, delay: 0.08, ease: easeSoft }
+            reduce
+              ? { duration: 0 }
+              : richMotion
+                ? { duration: 1.3, delay: 0.08, ease: easeSoft }
+                : { duration: 0.38 }
           }
         >
           Not sure where to begin? Draw a gentle creative challenge and rediscover forgotten
@@ -104,7 +117,7 @@ export function RandomFragmentChallenge() {
             type="button"
             onClick={draw}
             className="font-body rounded-[3px_5px_4px_3px] border border-ink/22 bg-cream/85 px-8 py-3.5 text-ink shadow-[6px_20px_40px_var(--shadow)] transition-[background-color,box-shadow,border-color] duration-700 hover:border-ink/28 hover:bg-blush/40"
-            whileHover={reduce ? {} : { scale: 1.02 }}
+            whileHover={!richMotion ? {} : { scale: 1.02 }}
             whileTap={reduce ? {} : { scale: 0.99 }}
           >
             Draw a Fragment Challenge

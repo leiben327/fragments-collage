@@ -53,6 +53,13 @@ export type ScrapLayout = {
   bg: string;
 };
 
+export type CollageLayoutOptions = {
+  /** Fewer decorative scraps & tape strips (phones / tablets). */
+  liteDecor?: boolean;
+  /** Softer SVG edge displacement + less micro-blur (phones). */
+  liteRender?: boolean;
+};
+
 export type CollageLayoutResult = {
   pieces: PieceLayout[];
   tapes: TapeLayout[];
@@ -649,6 +656,27 @@ function nearFocal(
   return scatterWide();
 }
 
+function applyLiteRenderToPieces(pieces: PieceLayout[]) {
+  for (const p of pieces) {
+    p.edgeDisplacementScale *= 0.52;
+    p.edgeNoiseOctaves = Math.max(2, Math.min(3, Math.round(p.edgeNoiseOctaves * 0.75)));
+    p.imageBlurPx *= 0.35;
+    if (p.imageBlurPx < 0.03) p.imageBlurPx = 0;
+    p.wrinkleOpacity *= 0.5;
+    p.edgeVignetteOpacity *= 0.82;
+  }
+}
+
+function applyCozyRenderToPieces(pieces: PieceLayout[]) {
+  for (const p of pieces) {
+    p.edgeDisplacementScale *= 0.78;
+    p.edgeNoiseOctaves = Math.max(2, Math.min(4, p.edgeNoiseOctaves));
+    p.imageBlurPx *= 0.65;
+    if (p.imageBlurPx < 0.02) p.imageBlurPx = 0;
+    p.wrinkleOpacity *= 0.72;
+  }
+}
+
 /**
  * Curated, asymmetrical collage layout — visual style drives structure; composition mode adds jitter.
  * Requires 3–8 images. Each (mood, salt, mode, count, layoutProfile, canvas) yields a distinct seed.
@@ -661,6 +689,7 @@ export function computeCollageLayout(
   compositionMode: CompositionModeId,
   canvasFormatId: string,
   compositionKind: CanvasCompositionKind,
+  options?: CollageLayoutOptions,
 ): CollageLayoutResult {
   const safeCount = clamp(count, 3, 8);
   const seed =
@@ -689,9 +718,17 @@ export function computeCollageLayout(
   const perm = Array.from({ length: safeCount }, (_, i) => i);
   shuffleInPlace(perm, rng);
 
-  const d = decorScale(compositionMode);
+  const d0 = decorScale(compositionMode);
+  const decorMul = options?.liteDecor ? 0.52 : 1;
+  const d = {
+    tape: d0.tape * decorMul,
+    scrap: d0.scrap * decorMul,
+  };
   const fp = pieces[focalIndex];
   const decorBias = hints.decorClusterBias;
+
+  const tapeMax = options?.liteDecor ? 4 : 8;
+  const scrapMax = options?.liteDecor ? 5 : 12;
 
   const tapeCount = clamp(
     Math.round(
@@ -700,7 +737,7 @@ export function computeCollageLayout(
         d.tape,
     ),
     1,
-    8,
+    tapeMax,
   );
   const tapes: TapeLayout[] = [];
   for (let t = 0; t < tapeCount; t++) {
@@ -730,7 +767,7 @@ export function computeCollageLayout(
         d.scrap,
     ),
     1,
-    12,
+    scrapMax,
   );
   const palette = hints.scrapPalette;
   const scraps: ScrapLayout[] = [];
@@ -783,6 +820,12 @@ export function computeCollageLayout(
     captionTopPct = rand(rng, 72, 92);
   } else if (compositionKind === "portrait-journal") {
     captionTopPct = rand(rng, 68, 92);
+  }
+
+  if (options?.liteRender) {
+    applyLiteRenderToPieces(pieces);
+  } else if (options?.liteDecor) {
+    applyCozyRenderToPieces(pieces);
   }
 
   return {

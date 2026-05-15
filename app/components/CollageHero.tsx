@@ -1,6 +1,10 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import {
+  useViewportEffectsBand,
+  type ViewportEffectsBand,
+} from "@/app/lib/useViewportEffectsBand";
 
 type Fragment = {
   w: number;
@@ -105,14 +109,16 @@ const fragments: Fragment[] = [
   },
 ];
 
-const floatY = (reduce: boolean) =>
-  reduce ? 0 : [0, -10, 4, -6, 0];
+const floatY = (reduce: boolean, band: ViewportEffectsBand) =>
+  reduce || band !== "full" ? 0 : [0, -10, 4, -6, 0];
 
-const floatRotate = (base: number, reduce: boolean) =>
-  reduce ? base : [base, base + 1.5, base - 1, base + 0.8, base];
+const floatRotate = (base: number, reduce: boolean, band: ViewportEffectsBand) =>
+  reduce || band !== "full" ? base : [base, base + 1.5, base - 1, base + 0.8, base];
 
 export function CollageHero() {
   const reduce = useReducedMotion();
+  const band = useViewportEffectsBand();
+  const heroFragments = band === "full" ? fragments : band === "cozy" ? fragments.slice(0, 5) : fragments.slice(0, 4);
 
   return (
     <section
@@ -125,10 +131,12 @@ export function CollageHero() {
         aria-hidden
       />
 
-      {fragments.map((f, i) => (
+      {heroFragments.map((f, i) => (
         <motion.div
           key={i}
-          className="pointer-events-none absolute shadow-[4px_12px_28px_var(--shadow)]"
+          className={`pointer-events-none absolute max-lg:shadow-sm ${
+            band === "full" ? "shadow-[4px_12px_28px_var(--shadow)]" : "shadow-[2px_8px_16px_var(--shadow)]"
+          }`}
           style={{
             width: f.w,
             height: f.h,
@@ -141,27 +149,33 @@ export function CollageHero() {
           initial={{ opacity: 0, y: 24, rotate: f.rotate - 4 }}
           animate={{
             opacity: 1,
-            y: floatY(!!reduce),
-            rotate: floatRotate(f.rotate, !!reduce),
+            y: floatY(!!reduce, band),
+            rotate: floatRotate(f.rotate, !!reduce, band),
           }}
           transition={{
-            opacity: { duration: 2.2, delay: f.delay * 0.15, ease: [0.22, 1, 0.36, 1] },
-            y: reduce
-              ? { duration: 0 }
-              : {
-                  duration: f.duration,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: f.delay,
-                },
-            rotate: reduce
-              ? { duration: 0 }
-              : {
-                  duration: f.duration * 1.1,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: f.delay + 0.3,
-                },
+            opacity: {
+              duration: band === "full" ? 2.2 : 0.55,
+              delay: band === "full" ? f.delay * 0.15 : f.delay * 0.06,
+              ease: [0.22, 1, 0.36, 1],
+            },
+            y:
+              reduce || band !== "full"
+                ? { duration: 0 }
+                : {
+                    duration: f.duration,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: f.delay,
+                  },
+            rotate:
+              reduce || band !== "full"
+                ? { duration: 0 }
+                : {
+                    duration: f.duration * 1.1,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: f.delay + 0.3,
+                  },
           }}
         >
           <span
@@ -180,7 +194,15 @@ export function CollageHero() {
           className="font-display text-center text-[clamp(2.6rem,6vw,4.25rem)] font-medium leading-[1.05] tracking-tight text-ink"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 2.4, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+          transition={
+            reduce
+              ? { duration: 0 }
+              : {
+                  duration: band === "full" ? 2.4 : 0.55,
+                  delay: band === "full" ? 0.1 : 0.04,
+                  ease: [0.22, 1, 0.36, 1],
+                }
+          }
         >
           Fragments
         </motion.h1>
@@ -188,7 +210,15 @@ export function CollageHero() {
           className="font-body mt-10 space-y-5 text-left text-base leading-relaxed text-ink-soft sm:mt-12 sm:text-[1.05rem] sm:leading-[1.7]"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 2.2, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+          transition={
+            reduce
+              ? { duration: 0 }
+              : {
+                  duration: band === "full" ? 2.2 : 0.5,
+                  delay: band === "full" ? 0.35 : 0.08,
+                  ease: [0.22, 1, 0.36, 1],
+                }
+          }
         >
           <p className="text-ink/92">
             We take thousands of photos and forget most of them.
