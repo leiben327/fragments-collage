@@ -45,11 +45,6 @@ import {
 } from "@/app/lib/moodTextStyle";
 import { SESSION_ACTIVE_FRAGMENT_CHALLENGE_KEY } from "@/app/lib/communityFragmentKeys";
 import {
-  addPortfolioEntry,
-  blobToDataUrl,
-  newPortfolioId,
-} from "@/app/lib/portfolioStorage";
-import {
   screenshotScaleForBand,
   useViewportEffectsBand,
   type ViewportEffectsBand,
@@ -352,9 +347,6 @@ export function AutoCollageGenerator() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareChallengeTag, setShareChallengeTag] = useState<string | null>(null);
-  const [portfolioBusy, setPortfolioBusy] = useState(false);
-  const [portfolioMessage, setPortfolioMessage] = useState<string | null>(null);
-  const [portfolioError, setPortfolioError] = useState<string | null>(null);
   const [moodFontId, setMoodFontId] = useState<MoodFontId>(DEFAULT_MOOD_FONT_ID);
   const [moodFontSizePx, setMoodFontSizePx] = useState(DEFAULT_MOOD_FONT_SIZE_PX);
   const [moodTextPositionId, setMoodTextPositionId] = useState<MoodTextPositionId>(
@@ -594,101 +586,6 @@ export function AutoCollageGenerator() {
     setShareChallengeTag(tag);
     setShareOpen(true);
   }, []);
-
-  useEffect(() => {
-    if (!portfolioMessage) return;
-    const t = window.setTimeout(() => setPortfolioMessage(null), 5200);
-    return () => window.clearTimeout(t);
-  }, [portfolioMessage]);
-
-  useEffect(() => {
-    if (!portfolioError) return;
-    const t = window.setTimeout(() => setPortfolioError(null), 9000);
-    return () => window.clearTimeout(t);
-  }, [portfolioError]);
-
-  const onSaveToPortfolio = useCallback(async () => {
-    console.log("[portfolio] save started", {
-      hasLayout: !!layout,
-      hasBoardEl: !!boardRef.current,
-    });
-    setPortfolioBusy(true);
-    setPortfolioMessage(null);
-    setPortfolioError(null);
-    setError(null);
-
-    if (!layout || !boardRef.current) {
-      const msg =
-        "Collage is not ready to save yet. Try Generate collage again, then Save to My Portfolio.";
-      console.warn("[portfolio] save aborted: missing layout or board node");
-      setPortfolioError(msg);
-      setPortfolioBusy(false);
-      return;
-    }
-
-    try {
-      const blob = await captureCollagePng();
-      console.log(
-        "[portfolio] raster capture succeeded (same domToBlob / board pipeline as Download PNG)",
-        { bytes: blob.size, type: blob.type },
-      );
-
-      const imageDataUrl = await blobToDataUrl(blob);
-      console.log("[portfolio] image data URL ready", {
-        length: imageDataUrl.length,
-        prefix: `${imageDataUrl.slice(0, 40)}…`,
-      });
-
-      let challengePrompt: string | undefined;
-      try {
-        const raw = sessionStorage.getItem(SESSION_ACTIVE_FRAGMENT_CHALLENGE_KEY);
-        if (raw?.trim()) challengePrompt = raw.trim();
-      } catch {
-        /* private mode */
-      }
-
-      addPortfolioEntry({
-        id: newPortfolioId(),
-        createdAt: Date.now(),
-        imageDataUrl,
-        moodSentence: mood.trim() || "today feels quiet and blue.",
-        collageStyle: preset.label,
-        canvasFormat: canvasFormat.label,
-        challengePrompt,
-      });
-
-      setPortfolioMessage("Saved to My Portfolio");
-      document.getElementById("my-portfolio")?.scrollIntoView({
-        behavior: reduce ? "auto" : "smooth",
-        block: "start",
-      });
-    } catch (err) {
-      const domName = err instanceof DOMException ? err.name : "";
-      const errName = err instanceof Error ? err.name : "";
-      if (domName === "QuotaExceededError" || errName === "QuotaExceededError") {
-        const msg =
-          "This browser ran out of storage for the portfolio. Remove older pieces or clear site data, then try again.";
-        console.error("[portfolio] QuotaExceededError", err);
-        setPortfolioError(msg);
-      } else {
-        const detail = formatExportFailure(err);
-        const msg = detail
-          ? `Could not save to portfolio. ${detail}`
-          : "Could not save to portfolio. Try again in a moment.";
-        console.error("[portfolio] save failed", err);
-        setPortfolioError(msg);
-      }
-    } finally {
-      setPortfolioBusy(false);
-    }
-  }, [
-    layout,
-    captureCollagePng,
-    mood,
-    preset.label,
-    canvasFormat.label,
-    reduce,
-  ]);
 
   const onShareToCommunity = useCallback(
     async (payload: ShareCommunityFragmentPayload) => {
@@ -1869,7 +1766,7 @@ export function AutoCollageGenerator() {
                 <motion.button
                   type="button"
                   onClick={onDownload}
-                  disabled={exporting || portfolioBusy}
+                  disabled={exporting}
                   className="font-body rounded-[2px_4px_3px_2px] border border-ink/18 bg-cream/85 px-6 py-3 text-sm text-ink shadow-[4px_14px_30px_var(--shadow)] transition-[background-color,border-color] duration-700 hover:border-ink/24 hover:bg-paper-deep/55 disabled:opacity-45"
                   whileHover={!richMotion || exporting ? {} : { scale: 1.01 }}
                   whileTap={reduce || exporting ? {} : { scale: 0.99 }}
@@ -1881,53 +1778,25 @@ export function AutoCollageGenerator() {
                 <motion.button
                   type="button"
                   onClick={openShareModal}
-                  disabled={shareBusy || portfolioBusy}
+                  disabled={shareBusy}
                   className="font-body rounded-[2px_4px_3px_2px] border border-ink/16 bg-blush/35 px-6 py-3 text-sm text-ink shadow-[4px_14px_28px_var(--shadow)] transition-[background-color,border-color] duration-700 hover:border-ink/22 hover:bg-blush/50 disabled:opacity-45"
                   whileHover={!richMotion ? {} : { scale: 1.01 }}
                   whileTap={reduce ? {} : { scale: 0.99 }}
                 >
                   Share to Community Fragments
                 </motion.button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    void onSaveToPortfolio();
-                  }}
-                  disabled={portfolioBusy || exporting || shareBusy}
-                  className="font-body cursor-pointer rounded-[2px_4px_3px_2px] border border-ink/14 bg-paper-deep/55 px-6 py-3 text-sm text-ink shadow-inner transition-[background-color,border-color] duration-700 hover:border-ink/22 hover:bg-cream/85 disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {portfolioBusy ? "Saving to portfolio…" : "Save to My Portfolio"}
-                </button>
               </div>
               <div className="flex justify-center">
                 <motion.button
                   type="button"
                   onClick={onShuffleLayout}
-                  disabled={!canGenerate || portfolioBusy}
+                  disabled={!canGenerate}
                   className="font-body rounded-[2px_4px_3px_2px] border border-ink/14 bg-paper-deep/50 px-6 py-2.5 text-sm text-ink-soft shadow-inner transition-colors duration-700 hover:border-ink/20 hover:bg-cream/80 hover:text-ink disabled:opacity-40"
                   whileTap={reduce || !canGenerate ? {} : { scale: 0.99 }}
                 >
                   Regenerate layout
                 </motion.button>
               </div>
-              {portfolioMessage && (
-                <p
-                  className="font-body text-center text-sm italic text-ink/80"
-                  role="status"
-                  aria-live="polite"
-                >
-                  {portfolioMessage}
-                </p>
-              )}
-              {portfolioError && (
-                <p
-                  className="font-body text-center text-sm italic text-rose-900/85"
-                  role="alert"
-                >
-                  {portfolioError}
-                </p>
-              )}
             </div>
         )}
 
