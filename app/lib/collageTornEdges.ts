@@ -3,7 +3,7 @@
  * Each call yields a unique clip-path — no shared SVG wave templates.
  */
 
-export type TearEdgeProfile = "archive" | "xerox";
+export type TearEdgeProfile = "archive" | "xerox" | "painted";
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -18,12 +18,25 @@ export function buildHandTornClipPath(
   rng: () => number,
   profile: TearEdgeProfile,
 ): string {
-  const archive = profile === "archive";
-  const perpWild = archive ? rand(rng, 5.5, 11) : rand(rng, 2.8, 5.5);
-  const perpBias = archive ? rand(rng, 1.2, 3.8) : rand(rng, 0.5, 2.1);
-  const tangJ = archive ? rand(rng, 1.4, 3.6) : rand(rng, 0.6, 1.8);
-  const fiberChance = archive ? 0.26 : 0.14;
-  const hairChance = archive ? 0.12 : 0.06;
+  const painted = profile === "painted";
+  const archive = profile === "archive" || painted;
+  const perpWild = painted
+    ? rand(rng, 7.5, 14)
+    : archive
+      ? rand(rng, 5.5, 11)
+      : rand(rng, 2.8, 5.5);
+  const perpBias = painted
+    ? rand(rng, 1.8, 4.2)
+    : archive
+      ? rand(rng, 1.2, 3.8)
+      : rand(rng, 0.5, 2.1);
+  const tangJ = painted
+    ? rand(rng, 2, 4.2)
+    : archive
+      ? rand(rng, 1.4, 3.6)
+      : rand(rng, 0.6, 1.8);
+  const fiberChance = painted ? 0.32 : archive ? 0.26 : 0.14;
+  const hairChance = painted ? 0.14 : archive ? 0.12 : 0.06;
 
   const pts: Array<[number, number]> = [];
 
@@ -47,9 +60,13 @@ export function buildHandTornClipPath(
     skipFirst: boolean,
   ) {
     const segs = clamp(
-      Math.floor(7 + rng() * 11 + (archive ? rng() * 5 : rng() * 2)),
-      6,
-      22,
+      Math.floor(
+        7 +
+          rng() * 11 +
+          (archive ? rng() * (painted ? 7 : 5) : rng() * 2),
+      ),
+      painted ? 8 : 6,
+      painted ? 26 : 22,
     );
     const dx = x1 - x0;
     const dy = y1 - y0;
@@ -102,6 +119,17 @@ export function buildHandTornClipPath(
 }
 
 export function buildEdgeNoiseParams(rng: () => number, profile: TearEdgeProfile) {
+  if (profile === "painted") {
+    return {
+      edgeDisplacementSeed: 1 + Math.floor(rng() * 998),
+      edgeDisplacementScale: rand(rng, 1.2, 3.1),
+      edgeNoiseBaseFrequency: rand(rng, 0.018, 0.038),
+      edgeNoiseOctaves: 3,
+      curlCorner: Math.floor(rng() * 4) as 0 | 1 | 2 | 3,
+      edgeVignetteOpacity: rand(rng, 0.12, 0.26),
+      wrinkleOpacity: rand(rng, 0.04, 0.1),
+    };
+  }
   return {
     edgeDisplacementSeed: 1 + Math.floor(rng() * 998),
     edgeDisplacementScale:

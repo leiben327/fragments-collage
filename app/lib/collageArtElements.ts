@@ -19,7 +19,11 @@ export type ArtElementKind =
   | "ink"
   | "label"
   | "paper_shadow"
-  | "organic_shape";
+  | "organic_shape"
+  | "paint_wash"
+  | "cut_color_paper"
+  | "ink_sketch"
+  | "speech_bubble";
 
 export type ArtLayoutElement = {
   id: string;
@@ -168,6 +172,24 @@ function stylePool(styleId: CollageStyleId): ArtElementKind[] {
         "pencil",
         "paper_shadow",
       ];
+    case "illustrated-collage":
+      return [
+        "paint_wash",
+        "paint_wash",
+        "cut_color_paper",
+        "cut_color_paper",
+        "organic_shape",
+        "botanical",
+        "ink",
+        "ink_sketch",
+        "ink_sketch",
+        "tracing",
+        "pencil",
+        "stitch_line",
+        "paper_shadow",
+        "tape_masking",
+        "speech_bubble",
+      ];
     default:
       return [
         "tracing",
@@ -203,6 +225,14 @@ function elementSize(kind: ArtElementKind, rng: () => number): { w: number; h: n
       return { w: rand(rng, 16, 30), h: rand(rng, 10, 20) };
     case "ink":
       return { w: rand(rng, 4, 11), h: rand(rng, 4, 11) };
+    case "paint_wash":
+      return { w: rand(rng, 28, 56), h: rand(rng, 22, 48) };
+    case "cut_color_paper":
+      return { w: rand(rng, 14, 34), h: rand(rng, 12, 30) };
+    case "ink_sketch":
+      return { w: rand(rng, 12, 30), h: rand(rng, 12, 30) };
+    case "speech_bubble":
+      return { w: rand(rng, 14, 26), h: rand(rng, 10, 20) };
     default:
       return { w: rand(rng, 8, 18), h: rand(rng, 6, 14) };
   }
@@ -210,11 +240,15 @@ function elementSize(kind: ArtElementKind, rng: () => number): { w: number; h: n
 
 function pickZ(kind: ArtElementKind, layer: "back" | "front", rng: () => number): number {
   if (layer === "back") {
+    if (kind === "paint_wash") return Math.floor(rand(rng, 5, 11));
+    if (kind === "cut_color_paper") return Math.floor(rand(rng, 9, 16));
     if (kind === "paper_shadow" || kind === "tracing") return Math.floor(rand(rng, 7, 14));
     return Math.floor(rand(rng, 10, 19));
   }
   if (kind === "tape_masking" || kind === "tape_clear" || kind === "clip" || kind === "pin")
     return Math.floor(rand(rng, 62, 76));
+  if (kind === "speech_bubble") return Math.floor(rand(rng, 34, 52));
+  if (kind === "ink_sketch") return Math.floor(rand(rng, 26, 44));
   if (kind === "stitch_line") return Math.floor(rand(rng, 42, 54));
   return Math.floor(rand(rng, 22, 41));
 }
@@ -282,17 +316,22 @@ export function computeCollageArtElements(
     (focalIndex + 1) * 374761393;
   const rng = mulberry32(seed);
 
+  const illustrated = styleId === "illustrated-collage";
+
   let count =
     density === "minimal"
       ? Math.floor(rand(rng, 5, 7))
       : density === "balanced"
         ? Math.floor(rand(rng, 7, 10))
         : Math.floor(rand(rng, 9, 13));
-  if (liteDecor) count = Math.max(4, Math.floor(count * 0.55));
-  if (manyPhotos) count = Math.max(4, Math.floor(count * 0.88));
+  if (illustrated) {
+    count += Math.floor(rand(rng, 5, 10));
+  }
+  if (liteDecor) count = Math.max(illustrated ? 6 : 4, Math.floor(count * (illustrated ? 0.62 : 0.55)));
+  if (manyPhotos) count = Math.max(illustrated ? 6 : 4, Math.floor(count * (illustrated ? 0.94 : 0.88)));
 
   const focal = pieces[focalIndex];
-  const avoidFocal = focal ? inflate(pieceRect(focal), 9) : null;
+  const avoidFocal = focal ? inflate(pieceRect(focal), illustrated ? 4 : 9) : null;
   const avoidSecondary = pieces
     .map((p, i) => (i !== focalIndex && p.tier !== 2 ? inflate(pieceRect(p), 5) : null))
     .filter((r): r is Rect => r !== null);
@@ -304,14 +343,18 @@ export function computeCollageArtElements(
     const kind = pool[Math.floor(rng() * pool.length)] ?? "paper_shadow";
     const { w, h } = elementSize(kind, rng);
     const layer: "back" | "front" =
+      kind === "paint_wash" ||
+      kind === "cut_color_paper" ||
       kind === "paper_shadow" ||
       kind === "tracing" ||
       (kind === "scrap_book" && rng() < 0.45) ||
       (kind === "scrap_newspaper" && rng() < 0.5)
         ? "back"
-        : rng() < 0.38
-          ? "back"
-          : "front";
+        : kind === "ink_sketch" || kind === "speech_bubble"
+          ? "front"
+          : rng() < 0.38
+            ? "back"
+            : "front";
 
     const tapeLike =
       kind === "tape_masking" ||
@@ -350,7 +393,12 @@ export function computeCollageArtElements(
         if (layer === "back") {
           if (avoidSecondary.some((r) => intersects(box, r))) continue;
         } else if (!tapeLike) {
-          if (rng() < 0.35 && avoidFocal && intersects(box, inflate(avoidFocal, -3))) continue;
+          if (
+            rng() < (illustrated ? 0.2 : 0.35) &&
+            avoidFocal &&
+            intersects(box, inflate(avoidFocal, -3))
+          )
+            continue;
         }
         ok = true;
         break;
@@ -360,9 +408,11 @@ export function computeCollageArtElements(
 
     const zIndex = pickZ(kind, layer, rng);
     const opacity = clamp(
-      (layer === "back" ? 0.22 : 0.38) + rng() * (layer === "back" ? 0.2 : 0.28),
+      (layer === "back" ? 0.22 : 0.38) +
+        rng() * (layer === "back" ? 0.2 : 0.28) +
+        (kind === "paint_wash" && illustrated ? 0.12 : 0),
       0.12,
-      0.78,
+      illustrated && kind === "paint_wash" ? 0.82 : 0.78,
     );
     const rotate = rand(rng, -38, 38);
     const variant = Math.floor(rng() * 1000);
@@ -379,11 +429,15 @@ export function computeCollageArtElements(
       zIndex,
       variant,
       mixBlendMode:
-        kind === "tracing" || kind === "tape_clear"
+        kind === "paint_wash"
           ? "soft-light"
-          : kind === "ink" || kind === "scrap_newspaper"
-            ? "multiply"
-            : undefined,
+          : kind === "tracing" || kind === "tape_clear"
+            ? "soft-light"
+            : kind === "ink" ||
+                kind === "scrap_newspaper" ||
+                kind === "cut_color_paper"
+              ? "multiply"
+              : undefined,
     });
   }
 

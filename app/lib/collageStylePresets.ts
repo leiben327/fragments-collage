@@ -5,6 +5,7 @@ export const COLLAGE_STYLE_IDS = [
   "emotional-poster",
   "museum-scrapbook",
   "quiet-memory",
+  "illustrated-collage",
 ] as const;
 
 export type CollageStyleId = (typeof COLLAGE_STYLE_IDS)[number];
@@ -16,7 +17,8 @@ export type LayoutProfile =
   | "mat-table"
   | "rift-diagonal"
   | "low-museum"
-  | "quiet-open";
+  | "quiet-open"
+  | "illustrated-surreal";
 
 export type StyleLayoutHints = {
   layoutProfile: LayoutProfile;
@@ -48,8 +50,8 @@ export type StyleLayoutHints = {
   behindScaleMin: number;
   behindScaleMax: number;
   labelPool: string[];
-  /** archive = rough desk tear; xerox = slightly cleaner print/zine tear */
-  tearEdgeIntensity: "archive" | "xerox";
+  /** archive = rough desk tear; xerox = cleaner; painted = cut-paper / gouache collage */
+  tearEdgeIntensity: "archive" | "xerox" | "painted";
 };
 
 export type CollageStylePreset = {
@@ -568,6 +570,87 @@ export const COLLAGE_STYLE_PRESETS: Record<CollageStyleId, CollageStylePreset> =
     labelColor: "rgba(236,240,252,0.94)",
     labelBg: "rgba(28, 36, 52, 0.75)",
     labelBorder: "1px solid rgba(170,185,210,0.35)",
+  },
+  "illustrated-collage": {
+    id: "illustrated-collage",
+    label: "Illustrated Collage",
+    blurb:
+      "Painted paper, ink doodles, and dream logic — photos drift through a hand-made scene.",
+    hints: {
+      layoutProfile: "illustrated-surreal",
+      focalWidthMin: 28,
+      focalWidthMax: 40,
+      focalHeightMin: 30,
+      focalHeightMax: 44,
+      secondaryWidthMin: 20,
+      secondaryWidthMax: 36,
+      secondaryHeightMin: 22,
+      secondaryHeightMax: 40,
+      tertiaryWidthMin: 10,
+      tertiaryWidthMax: 28,
+      tertiaryHeightMin: 12,
+      tertiaryHeightMax: 30,
+      decorClusterBias: 0.48,
+      rotationRange: 14,
+      radiusMul: 1.12,
+      scrapPalette: [
+        "linear-gradient(135deg, rgba(255,200,190,0.95) 0%, rgba(255,140,120,0.55) 100%)",
+        "linear-gradient(160deg, rgba(190,230,220,0.92) 0%, rgba(80,160,150,0.45) 100%)",
+        "linear-gradient(200deg, rgba(255,236,160,0.9) 0%, rgba(255,180,90,0.5) 100%)",
+        "linear-gradient(120deg, rgba(200,210,255,0.88) 0%, rgba(120,130,210,0.42) 100%)",
+        "linear-gradient(175deg, rgba(240,220,255,0.9) 0%, rgba(180,140,220,0.48) 100%)",
+      ],
+      tapeOpacityMin: 0.34,
+      tapeOpacityMax: 0.55,
+      tapeCountMin: 2,
+      tapeCountMax: 4,
+      scrapCountMin: 4,
+      scrapCountMax: 8,
+      labelCountMin: 1,
+      labelCountMax: 2,
+      behindScaleMin: 1.02,
+      behindScaleMax: 1.14,
+      tearEdgeIntensity: "painted",
+      labelPool: ["here", "float", "soft", "glow", "ripple"],
+    },
+    boardBackground:
+      "radial-gradient(ellipse 70% 55% at 22% 18%, rgba(255,220,200,0.5) 0%, transparent 52%), radial-gradient(ellipse 55% 50% at 82% 28%, rgba(180,220,255,0.35) 0%, transparent 48%), radial-gradient(ellipse 60% 45% at 48% 88%, rgba(200,255,210,0.28) 0%, transparent 50%), linear-gradient(168deg, #f2ebe4 0%, #e4d8ec 38%, #d4e8f0 72%, #c8e0dc 100%)",
+    exportBackgroundColor: "#e8e0ec",
+    linedTextureOpacity: 0.06,
+    linedAngleDeg: -14,
+    grainSvgOpacity: 0.11,
+    scannedPaperOpacity: 0.06,
+    scannedAngleDeg: -6,
+    atmosphereGradient:
+      "radial-gradient(ellipse 80% 60% at 40% 45%, rgba(255,200,190,0.18) 0%, transparent 50%), radial-gradient(ellipse 55% 45% at 70% 70%, rgba(120,170,255,0.12) 0%, transparent 55%)",
+    atmosphereBlendMode: "soft-light",
+    globalGradeGradient:
+      "linear-gradient(195deg, rgba(255,255,255,0.12) 0%, transparent 40%, rgba(90,120,160,0.08) 100%)",
+    globalGradeOpacity: 0.14,
+    globalGradeBlendMode: "soft-light",
+    pieceInkOverlay:
+      "radial-gradient(ellipse 65% 55% at 40% 40%, rgba(255,240,230,0.35) 0%, transparent 55%), linear-gradient(185deg, transparent 35%, rgba(80,110,160,0.12) 100%)",
+    pieceInkOverlayOpacity: 0.28,
+    pieceInkOverlayBlend: "soft-light",
+    innerVignette: "inset 0 0 72px rgba(45,55,90,0.06)",
+    tapeGradient:
+      "linear-gradient(90deg, rgba(255,252,250,0.55) 0%, rgba(200,210,240,0.55) 50%, rgba(255,236,220,0.5) 100%)",
+    tapeBoxShadow: "0 2px 8px rgba(50,60,100,0.1), inset 0 0 0 1px rgba(255,255,255,0.28)",
+    frameClasses:
+      "rounded-[8px_12px_10px_9px] ring-2 ring-white/40 shadow-[8px_24px_40px_rgba(60,80,120,0.12)]",
+    behindGradient:
+      "linear-gradient(155deg, #fff8f4 0%, #e8dcf8 40%, #d0e8f4 100%)",
+    unifiedImageFilter:
+      "saturate(1.08) contrast(1.03) brightness(1.04) hue-rotate(-4deg)",
+    titleFontClass: "font-hand-indie",
+    captionFontClass: "font-hand-indie",
+    captionColor: "rgba(38, 42, 72, 0.9)",
+    captionTextShadow: "0 0 14px rgba(255,252,250,0.75), 0 1px 0 rgba(255,255,255,0.5)",
+    titleColor: "rgba(32, 36, 62, 0.92)",
+    labelFontClass: "font-hand-shadows",
+    labelColor: "rgba(42, 48, 78, 0.88)",
+    labelBg: "rgba(255,252,248,0.55)",
+    labelBorder: "1px solid rgba(100,120,180,0.2)",
   },
 };
 

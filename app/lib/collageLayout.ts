@@ -200,7 +200,11 @@ function basePieceFields(
   "xPct" | "yPct" | "widthPct" | "heightPct" | "rotate" | "zIndex" | "tier"
 > {
   const profile: TearEdgeProfile =
-    hints.tearEdgeIntensity === "xerox" ? "xerox" : "archive";
+    hints.tearEdgeIntensity === "xerox"
+      ? "xerox"
+      : hints.tearEdgeIntensity === "painted"
+        ? "painted"
+        : "archive";
   const paper = buildPiecePaperEdge(rng, profile);
   const opacity =
     tier === 0
@@ -268,12 +272,14 @@ function assignOrganicZ(
   pieces: PieceLayout[],
   focalIndex: number,
   rng: () => number,
+  layoutProfile?: LayoutProfile,
 ) {
+  const illustrated = layoutProfile === "illustrated-surreal";
   const many = pieces.length >= 6;
   const others = pieces.map((_, i) => i).filter((i) => i !== focalIndex);
   shuffleInPlace(others, rng);
-  const low = 20;
-  const high = 44;
+  const low = illustrated ? 18 : 20;
+  const high = illustrated ? 48 : 44;
   const zs = others.map(() => low + Math.floor(rng() * (high - low)));
   zs.sort((a, b) => a - b);
   others.forEach((idx, rank) => {
@@ -285,12 +291,14 @@ function assignOrganicZ(
   );
 
   /** With many photos, keep focal lift gentler so fewer prints sit fully underneath. */
-  const focalLift = many
-    ? 2 + Math.floor(rng() * 4)
-    : 4 + Math.floor(rng() * 6);
+  const focalLift = illustrated
+    ? 2 + Math.floor(rng() * 3)
+    : many
+      ? 2 + Math.floor(rng() * 4)
+      : 4 + Math.floor(rng() * 6);
   pieces[focalIndex].zIndex = maxOther + focalLift;
 
-  if (others.length > 0 && rng() < (many ? 0.12 : 0.28)) {
+  if (others.length > 0 && rng() < (illustrated ? 0.18 : many ? 0.12 : 0.28)) {
     const accent = others[Math.floor(rng() * others.length)]!;
     if (rng() < 0.55) {
       pieces[accent].zIndex = pieces[focalIndex].zIndex + 1 + Math.floor(rng() * 5);
@@ -332,6 +340,8 @@ function focalFieldAnchor(
       return { fx: rand(rng, 32, 50), fy: rand(rng, 32, 52) };
     case "low-museum":
       return { fx: rand(rng, 38, 62), fy: rand(rng, 48, 70) };
+    case "illustrated-surreal":
+      return { fx: rand(rng, 32, 68), fy: rand(rng, 28, 68) };
     case "quiet-open":
     default:
       return { fx: rand(rng, 34, 66), fy: rand(rng, 34, 66) };
@@ -351,6 +361,8 @@ function diagonalSweepStart(prof: LayoutProfile, rng: () => number): number {
       return rand(rng, 0.35, 1.05) * Math.PI;
     case "left-weighted-poster":
       return rand(rng, -1.12, -0.48) * Math.PI;
+    case "illustrated-surreal":
+      return rand(rng, -0.25, 0.25) * Math.PI;
     case "quiet-open":
     default:
       return rng() * Math.PI * 2;
@@ -378,6 +390,212 @@ function cornerScatter(
 }
 
 /**
+ * Mixed-media illustrated layout: spiral / ribbon flow, strong scale contrast,
+ * foreground–background drift — avoids grid columns and “all equal rectangles”.
+ */
+function placeIllustratedSurrealPieces(
+  mode: CompositionModeId,
+  count: number,
+  focal: number,
+  rng: () => number,
+  hints: StyleLayoutHints,
+  rotCap: number,
+  compositionKind: CanvasCompositionKind,
+): PieceLayout[] {
+  const pieces: PieceLayout[] = new Array(count);
+  const others = Array.from({ length: count }, (_, i) => i).filter(
+    (i) => i !== focal,
+  );
+  shuffleInPlace(others, rng);
+
+  const packed = count >= 6;
+  const maxSec = Math.max(1, count - 1);
+  const secN = clamp(
+    Math.floor((count - 1) * (packed ? 0.36 + rng() * 0.12 : 0.28 + rng() * 0.14)),
+    1,
+    maxSec,
+  );
+  const secondarySet = new Set(others.slice(0, secN));
+
+  let surrealHero: number | null = null;
+  if (count >= 4 && others.length >= 2) {
+    const tertiaryPool = others.filter((i) => !secondarySet.has(i));
+    const pool = tertiaryPool.length ? tertiaryPool : others;
+    surrealHero = pool[Math.floor(rng() * pool.length)]!;
+  }
+
+  const anchor = focalFieldAnchor("illustrated-surreal", rng);
+  let fx = anchor.fx;
+  let fy = anchor.fy;
+
+  switch (compositionKind) {
+    case "vertical-story":
+      fy = lerp(fy, rand(rng, 32, 42), 0.52);
+      fx = lerp(fx, 50, 0.28);
+      break;
+    case "portrait-editorial":
+      fy = lerp(fy, rand(rng, 36, 46), 0.45);
+      break;
+    case "portrait-journal":
+      fx = lerp(fx, 50, 0.22);
+      fy = lerp(fy, 50, 0.18);
+      break;
+    case "square-balanced":
+      fx = lerp(fx, 50, 0.42);
+      fy = lerp(fy, 50, 0.38);
+      break;
+    case "cinematic-wide":
+      fx = lerp(
+        fx,
+        rng() > 0.5 ? rand(rng, 58, 70) : rand(rng, 30, 42),
+        0.4,
+      );
+      fy = lerp(fy, rand(rng, 42, 58), 0.26);
+      break;
+    case "portrait-social":
+    default:
+      break;
+  }
+
+  fx += rand(rng, -10, 10);
+  fy += rand(rng, -8, 8);
+  fx = clamp(fx, 26, 74);
+  fy = clamp(fy, 24, 76);
+
+  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 11 : 14);
+  const fw0 = rand(rng, hints.focalWidthMin, hints.focalWidthMax);
+  const fh0 = rand(rng, hints.focalHeightMin, hints.focalHeightMax);
+  const focalShrink = packed ? rand(rng, 0.76, 0.88) : rand(rng, 0.86, 0.96);
+  let capW = 48;
+  let capH = 50;
+  switch (compositionKind) {
+    case "vertical-story":
+      capW = Math.min(capW, 44);
+      capH = Math.min(capH + 4, 54);
+      break;
+    case "portrait-editorial":
+      capW = Math.min(capW, 44);
+      capH = Math.min(capH + 2, 52);
+      break;
+    case "cinematic-wide":
+      capW = Math.min(capW + 4, 54);
+      capH = Math.min(capH, 44);
+      break;
+    default:
+      break;
+  }
+
+  pieces[focal] = {
+    ...basePieceFields(rng, hints, rotCap, 0),
+    xPct: fjx,
+    yPct: fjy,
+    widthPct: Math.min(capW, fw0 * focalShrink),
+    heightPct: Math.min(capH, fh0 * focalShrink),
+    rotate: styleRotation(rng, rotCap * 0.86),
+    zIndex: 0,
+    floatYOffsetPx: rand(rng, -10, 12),
+    tier: 0,
+  };
+
+  const diag = diagonalSweepStart("illustrated-surreal", rng);
+  const fp = pieces[focal]!;
+  let spiralI = 0;
+
+  for (const idx of others) {
+    spiralI += 1;
+    const isHero = surrealHero !== null && idx === surrealHero;
+    const tier: PieceTier =
+      isHero ? 1 : secondarySet.has(idx) ? 1 : 2;
+
+    let w: number;
+    let h: number;
+    if (isHero) {
+      w = rand(rng, 36, 52);
+      h = rand(rng, 26, 42);
+    } else if (tier === 1) {
+      w = rand(rng, hints.secondaryWidthMin, hints.secondaryWidthMax + 6);
+      h = rand(rng, hints.secondaryHeightMin, hints.secondaryHeightMax + 6);
+    } else {
+      const roll = rng();
+      if (roll < 0.24) {
+        w = rand(rng, hints.tertiaryWidthMin, hints.tertiaryWidthMin + 10);
+        h = rand(rng, hints.tertiaryHeightMin, hints.tertiaryHeightMin + 12);
+      } else if (roll < 0.5) {
+        w = rand(rng, 26, 42);
+        h = rand(rng, 12, 22);
+      } else if (roll < 0.74) {
+        w = rand(rng, 14, 26);
+        h = rand(rng, 30, 48);
+      } else {
+        w = rand(rng, hints.tertiaryWidthMin, hints.tertiaryWidthMax + 6);
+        h = rand(rng, hints.tertiaryHeightMin, hints.tertiaryHeightMax + 8);
+      }
+    }
+
+    const slot = spiralI / Math.max(1, others.length);
+    const theta =
+      diag +
+      slot * Math.PI * (2.05 + rng() * 0.95) +
+      styleRotation(rng, 0.62);
+    const rBase = 14 + Math.pow(slot, 0.82) * (packed ? 46 : 54);
+    const r = rBase * (0.84 + rng() * 0.38);
+    let x = fp.xPct + Math.cos(theta) * r * (0.9 + rng() * 0.2);
+    let y =
+      fp.yPct +
+      Math.sin(theta) * r * (0.78 + rng() * 0.28) * (rng() < 0.5 ? 1.08 : 0.92);
+
+    if (tier === 2 && rng() < 0.48) {
+      y += rand(rng, 3, 16);
+      x += rand(rng, -18, 18);
+    }
+    if (tier === 2 && w < 20 && rng() < 0.52) {
+      y -= rand(rng, 6, 20);
+    }
+
+    if (isHero) {
+      x = lerp(
+        x,
+        rng() > 0.5 ? rand(rng, 68, 90) : rand(rng, 12, 34),
+        0.58,
+      );
+      y = lerp(y, rand(rng, 22, 78), 0.45);
+    }
+
+    if (spiralI % 5 === 0) {
+      const c = cornerScatter(spiralI, rng, 6);
+      x = lerp(x, c.x, 0.22 + rng() * 0.18);
+      y = lerp(y, c.y, 0.22 + rng() * 0.18);
+    }
+
+    const jit = tier === 2 ? 17 : 12;
+    const [jx, jy] = jitter(mode, rng, x, y, jit);
+    x = jx;
+    y = jy;
+
+    if (tier === 2 && rng() < 0.26) {
+      w *= rand(rng, 1.05, 1.28);
+      h *= rand(rng, 0.72, 0.92);
+    }
+
+    pieces[idx] = {
+      ...basePieceFields(rng, hints, rotCap, tier),
+      xPct: x,
+      yPct: y,
+      widthPct: w,
+      heightPct: h,
+      rotate: styleRotation(rng, rotCap * (tier === 2 ? 1.12 : 0.95)),
+      zIndex: 0,
+      floatYOffsetPx:
+        tier === 2 ? rand(rng, -16, 18) : rand(rng, -12, 14),
+      tier,
+    };
+  }
+
+  containAllPhotosOnPaper(pieces, rng);
+  return pieces;
+}
+
+/**
  * Field collage: medium focal, satellites on a clearance arc, tertiaries in
  * corners and mid-board — breathable, asymmetrical, journal-like.
  */
@@ -392,6 +610,18 @@ function placePiecesUnified(
 ): PieceLayout[] {
   const pieces: PieceLayout[] = new Array(count);
   const prof: LayoutProfile = hints.layoutProfile;
+
+  if (prof === "illustrated-surreal") {
+    return placeIllustratedSurrealPieces(
+      mode,
+      count,
+      focal,
+      rng,
+      hints,
+      rotCap,
+      compositionKind,
+    );
+  }
 
   const others = Array.from({ length: count }, (_, i) => i).filter(
     (i) => i !== focal,
@@ -753,7 +983,7 @@ export function computeCollageLayout(
       else if (p.imageBlurPx < 0.05) p.imageBlurPx = 0;
     }
   }
-  assignOrganicZ(pieces, focalIndex, rng);
+  assignOrganicZ(pieces, focalIndex, rng, hints.layoutProfile);
 
   const perm = Array.from({ length: safeCount }, (_, i) => i);
   shuffleInPlace(perm, rng);
@@ -852,7 +1082,9 @@ export function computeCollageLayout(
       ? rand(rng, 68, 94)
       : prof === "low-museum"
         ? rand(rng, 8, 28)
-        : rand(rng, 52, 92);
+        : prof === "illustrated-surreal"
+          ? rand(rng, 8, 34)
+          : rand(rng, 52, 92);
 
   if (compositionKind === "vertical-story") {
     captionTopPct = captionAway ? rand(rng, 74, 92) : rand(rng, 62, 86);
