@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f6f1e8;
+  --paper-deep: #ebe3d6;
+  --ink: #3d3832;
+  --ink-soft: #6b6359;
+  --blush: #e8d4cf;
+  --sage: #c5cbb8;
+  --cream: #faf7f2;
+  --shadow: rgba(61, 56, 50, 0.12);
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-blush: var(--blush);
+  --color-sage: var(--sage);
+  --color-cream: var(--cream);
+  --font-display: var(--font-cormorant);
+  --font-body: var(--font-spectral);
+  --font-caption: var(--font-caveat);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-spectral), ui-serif, Georgia, serif;
+  -webkit-tap-highlight-color: rgba(61, 56, 50, 0.08);
+}
+
+/* Mobile: reduce double-tap zoom delay on primary controls */
+button,
+[role="button"],
+input[type="file"] + label {
+  touch-action: manipulation;
+}
+
+/* Soft film grain overlay */
+.grain::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  opacity: 0.085;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Torn paper edge illusion */
+.torn {
+  clip-path: polygon(
+    0% 2%,
+    3% 0%,
+    8% 1%,
+    14% 0%,
+    22% 2%,
+    30% 0%,
+    38% 2%,
+    48% 0%,
+    58% 2%,
+    68% 0%,
+    78% 2%,
+    88% 0%,
+    96% 2%,
+    100% 4%,
+    99% 12%,
+    100% 22%,
+    98% 32%,
+    100% 44%,
+    99% 56%,
+    100% 68%,
+    98% 78%,
+    100% 88%,
+    99% 96%,
+    96% 100%,
+    88% 99%,
+    78% 100%,
+    68% 98%,
+    56% 100%,
+    44% 98%,
+    32% 100%,
+    22% 99%,
+    12% 100%,
+    4% 98%,
+    0% 94%,
+    1% 84%,
+    0% 72%,
+    2% 62%,
+    0% 50%,
+    2% 38%,
+    0% 26%,
+    2% 14%,
+    0% 6%
+  );
+}
+
+/* Collage generator — style-specific handwriting / editorial */
+.font-hand-indie {
+  font-family: var(--font-indie), cursive;
+}
+
+.font-hand-shadows {
+  font-family: var(--font-shadows), cursive;
+}
+
+.font-editorial {
+  font-family: var(--font-news), ui-serif, Georgia, serif;
+}
