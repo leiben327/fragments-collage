@@ -215,11 +215,11 @@ function basePieceFields(
       rng() * (hints.behindScaleMax - hints.behindScaleMin),
     behindRotate: styleRotation(rng, rotCap * (tier === 2 ? 1.05 : 0.92)),
     imageBlurPx:
-      tier === 2 && rng() > 0.72
-        ? 0.08 + rng() * 0.28
-        : rng() > 0.82
+      tier === 2 && rng() > 0.88
+        ? 0.05 + rng() * 0.14
+        : rng() > 0.92
           ? 0
-          : 0.04 + rng() * 0.16,
+          : 0.015 + rng() * 0.07,
     floatYOffsetPx: 0,
     layerShadow: pickLayerShadowForTier(tier, rng),
     ...paper,
@@ -269,6 +269,7 @@ function assignOrganicZ(
   focalIndex: number,
   rng: () => number,
 ) {
+  const many = pieces.length >= 6;
   const others = pieces.map((_, i) => i).filter((i) => i !== focalIndex);
   shuffleInPlace(others, rng);
   const low = 20;
@@ -283,10 +284,13 @@ function assignOrganicZ(
     0,
   );
 
-  const focalLift = 4 + Math.floor(rng() * 6);
+  /** With many photos, keep focal lift gentler so fewer prints sit fully underneath. */
+  const focalLift = many
+    ? 2 + Math.floor(rng() * 4)
+    : 4 + Math.floor(rng() * 6);
   pieces[focalIndex].zIndex = maxOther + focalLift;
 
-  if (others.length > 0 && rng() < 0.28) {
+  if (others.length > 0 && rng() < (many ? 0.12 : 0.28)) {
     const accent = others[Math.floor(rng() * others.length)]!;
     if (rng() < 0.55) {
       pieces[accent].zIndex = pieces[focalIndex].zIndex + 1 + Math.floor(rng() * 5);
@@ -394,9 +398,16 @@ function placePiecesUnified(
   );
   shuffleInPlace(others, rng);
 
+  const packed = count >= 6;
+  const packedTight = count >= 7;
+
   const maxSec = Math.max(1, count - 1);
+  /** More secondaries (medium strips) when packed — fewer stamp-sized hiddens. */
   const secN = clamp(
-    Math.floor((count - 1) * (0.36 + rng() * 0.44)),
+    Math.floor(
+      (count - 1) *
+        (packed ? 0.46 + rng() * 0.3 : 0.36 + rng() * 0.44),
+    ),
     1,
     maxSec,
   );
@@ -467,10 +478,10 @@ function placePiecesUnified(
       break;
   }
 
-  const [fjx, fjy] = jitter(mode, rng, fx, fy, 12);
-  const focalShrink = rand(rng, 0.82, 0.95);
-  const fwSized = fw * focalShrink;
-  const fhSized = fh * focalShrink;
+  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 9 : 12);
+  const focalShrink = packed ? rand(rng, 0.68, 0.82) : rand(rng, 0.82, 0.95);
+  let fwSized = fw * focalShrink;
+  let fhSized = fh * focalShrink;
   let capW = prof === "low-museum" && hints.focalWidthMax >= 52 ? 56 : 52;
   let capH = prof === "low-museum" && hints.focalHeightMax >= 52 ? 50 : 48;
 
@@ -503,6 +514,14 @@ function placePiecesUnified(
       break;
   }
 
+  if (packed) {
+    const pm = packedTight ? 0.76 : 0.84;
+    fwSized *= pm;
+    fhSized *= pm;
+    capW = Math.min(capW, packedTight ? 40 : 44);
+    capH = Math.min(capH, packedTight ? 36 : 40);
+  }
+
   pieces[focal] = {
     ...basePieceFields(rng, hints, rotCap, 0),
     xPct: fjx,
@@ -517,8 +536,12 @@ function placePiecesUnified(
 
   const focalW = pieces[focal].widthPct;
   const diag = diagonalSweepStart(prof, rng);
-  const arcSpread = Math.PI * (0.52 + rng() * 0.38);
-  const rClear = 20 + focalW * 0.3 + rand(rng, 4, 16);
+  const arcSpread = Math.PI * (packed ? 0.58 + rng() * 0.42 : 0.52 + rng() * 0.38);
+  const rClear =
+    20 +
+    focalW * 0.3 +
+    rand(rng, 4, 16) +
+    (packed ? 8 + (count - 6) * 2.5 : 0);
 
   let secRank = 0;
   for (const idx of others) {
@@ -533,11 +556,19 @@ function placePiecesUnified(
       const slot = (secRank - 1) / Math.max(1, secN - 0.001);
       w = rand(rng, hints.secondaryWidthMin, hints.secondaryWidthMax);
       h = rand(rng, hints.secondaryHeightMin, hints.secondaryHeightMax);
+      if (packed) {
+        w = clamp(w * rand(rng, 1.04, 1.12), hints.secondaryWidthMin, hints.secondaryWidthMax + 2);
+        h = clamp(h * rand(rng, 1.03, 1.1), hints.secondaryHeightMin, hints.secondaryHeightMax + 2);
+      }
 
       let angle =
         diag + arcSpread * slot + styleRotation(rng, 0.38 + rng() * 0.22);
       let radX = rClear + rand(rng, 10, 34) * (0.5 + slot * 0.55);
       let radY = rClear * 0.9 + rand(rng, 8, 28) * (0.5 + slot * 0.5);
+      if (packed) {
+        radX *= rand(rng, 1.06, 1.18);
+        radY *= rand(rng, 1.04, 1.14);
+      }
 
       switch (compositionKind) {
         case "vertical-story":
@@ -584,21 +615,25 @@ function placePiecesUnified(
       x = fx + (x - fx) * radialMul;
       y = fy + (y - fy) * radialMul;
     } else {
-      if (rng() < 0.18) {
+      if (!packed && rng() < 0.18) {
         w = rand(rng, 7, 14);
         h = rand(rng, 9, 18);
       } else {
         w = rand(rng, hints.tertiaryWidthMin, hints.tertiaryWidthMax);
         h = rand(rng, hints.tertiaryHeightMin, hints.tertiaryHeightMax);
+        if (packed) {
+          w = Math.max(w, hints.tertiaryWidthMin + 1.5);
+          h = Math.max(h, hints.tertiaryHeightMin + 2);
+        }
       }
 
-      if (rng() < 0.4) {
+      if (rng() < (packed ? 0.58 : 0.4)) {
         const c = cornerScatter(Math.floor(rng() * 4), rng, PHOTO_PAPER_INSET);
         x = c.x + (rng() - 0.5) * 8;
         y = c.y + (rng() - 0.5) * 8;
       } else {
         const ang = rng() * Math.PI * 2;
-        const strandR = rand(rng, 14, 32);
+        const strandR = rand(rng, packed ? 20 : 14, packed ? 42 : 32);
         let squashX = 0.58 + rng() * 0.22;
         let squashY = 0.48 + rng() * 0.22;
         if (
@@ -620,7 +655,7 @@ function placePiecesUnified(
       }
     }
 
-    const jitAmt = tier === 1 ? 14 : 22;
+    const jitAmt = tier === 1 ? 14 : packed ? 14 : 22;
     const [jx, jy] = jitter(mode, rng, x, y, jitAmt);
     pieces[idx] = {
       ...basePieceFields(rng, hints, rotCap, tier),
@@ -660,10 +695,9 @@ function applyLiteRenderToPieces(pieces: PieceLayout[]) {
   for (const p of pieces) {
     p.edgeDisplacementScale *= 0.52;
     p.edgeNoiseOctaves = Math.max(2, Math.min(3, Math.round(p.edgeNoiseOctaves * 0.75)));
-    p.imageBlurPx *= 0.35;
-    if (p.imageBlurPx < 0.03) p.imageBlurPx = 0;
-    p.wrinkleOpacity *= 0.5;
-    p.edgeVignetteOpacity *= 0.82;
+    p.imageBlurPx = 0;
+    p.wrinkleOpacity *= 0.45;
+    p.edgeVignetteOpacity *= 0.78;
   }
 }
 
@@ -671,9 +705,9 @@ function applyCozyRenderToPieces(pieces: PieceLayout[]) {
   for (const p of pieces) {
     p.edgeDisplacementScale *= 0.78;
     p.edgeNoiseOctaves = Math.max(2, Math.min(4, p.edgeNoiseOctaves));
-    p.imageBlurPx *= 0.65;
+    p.imageBlurPx *= 0.35;
     if (p.imageBlurPx < 0.02) p.imageBlurPx = 0;
-    p.wrinkleOpacity *= 0.72;
+    p.wrinkleOpacity *= 0.65;
   }
 }
 
@@ -713,19 +747,30 @@ export function computeCollageLayout(
     rotCap,
     compositionKind,
   );
+  if (safeCount >= 6) {
+    for (const p of pieces) {
+      if (p.tier < 2) p.imageBlurPx = 0;
+      else if (p.imageBlurPx < 0.05) p.imageBlurPx = 0;
+    }
+  }
   assignOrganicZ(pieces, focalIndex, rng);
 
   const perm = Array.from({ length: safeCount }, (_, i) => i);
   shuffleInPlace(perm, rng);
 
   const d0 = decorScale(compositionMode);
-  const decorMul = options?.liteDecor ? 0.52 : 1;
+  const decorMul =
+    options?.liteDecor && safeCount >= 6
+      ? 0.42
+      : options?.liteDecor
+        ? 0.52
+        : 1;
   const d = {
     tape: d0.tape * decorMul,
     scrap: d0.scrap * decorMul,
   };
   const fp = pieces[focalIndex];
-  const decorBias = hints.decorClusterBias;
+  const decorBias = hints.decorClusterBias * (safeCount >= 6 ? 0.55 : 1);
 
   const tapeMax = options?.liteDecor ? 4 : 8;
   const scrapMax = options?.liteDecor ? 5 : 12;

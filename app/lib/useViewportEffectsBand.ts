@@ -37,7 +37,10 @@ export function useViewportEffectsBand(): ViewportEffectsBand {
   return band;
 }
 
-/** PNG raster scale for `modern-screenshot` — at least 2× for sharp downloads. */
+/**
+ * PNG raster scale for `modern-screenshot` (3× on all viewports for sharp exports).
+ */
 export function screenshotScaleForBand(band: ViewportEffectsBand): number {
-  return band === "full" ? 3 : 2;
+  void band;
+  return 3;
 }

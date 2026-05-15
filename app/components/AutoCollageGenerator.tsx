@@ -451,6 +451,7 @@ export function AutoCollageGenerator() {
       pieces: layout.pieces,
       focalIndex: layout.focalIndex,
       liteDecor: viewportBand !== "full",
+      manyPhotos: slots.length >= 6,
     });
   }, [
     layout,
@@ -460,6 +461,7 @@ export function AutoCollageGenerator() {
     styleId,
     artDensity,
     viewportBand,
+    slots.length,
   ]);
 
   const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -652,6 +654,10 @@ export function AutoCollageGenerator() {
   const canGenerate = slots.length >= 3 && slots.length <= 8;
   const showCollageLayers = Boolean(generated && layout);
   const isZine = styleId === "vintage-zine";
+  /** Softer ink / vignette / wrinkle on small screens and when many photos stay legible. */
+  const photoReadabilityMul =
+    (viewportBand === "compact" ? 0.62 : viewportBand === "cozy" ? 0.78 : 1) *
+    (slots.length >= 6 ? 0.88 : 1);
 
   const collageMoodFontPx = moodAutoFit
     ? (moodFitCollagePx ?? moodFontSizePx)
@@ -1441,7 +1447,9 @@ export function AutoCollageGenerator() {
                     mixBlendMode: preset.atmosphereBlendMode,
                     opacity: Math.min(
                       1,
-                      atmosphereOpacity * paperSurface.atmosphereOpacityMul,
+                      atmosphereOpacity *
+                        paperSurface.atmosphereOpacityMul *
+                        (slots.length >= 6 ? 0.9 : 1),
                     ),
                   }}
                   aria-hidden
@@ -1632,13 +1640,16 @@ export function AutoCollageGenerator() {
                           <img
                             src={url}
                             alt=""
-                            className="relative z-0 h-full w-full min-h-0 flex-1 object-cover [image-rendering:auto]"
+                            className="relative z-0 h-full w-full min-h-0 flex-1 object-cover"
                             draggable={false}
                             decoding="async"
                             fetchPriority={i === layout.focalIndex ? "high" : "auto"}
                             style={{
                               opacity: p.opacity,
                               filter: imgFilter.join(" "),
+                              imageRendering: "auto",
+                              WebkitBackfaceVisibility: "hidden",
+                              backfaceVisibility: "hidden",
                             }}
                           />
                           <div
@@ -1646,14 +1657,17 @@ export function AutoCollageGenerator() {
                             style={{
                               background: `radial-gradient(ellipse 78% 74% at 46% 44%, transparent 30%, rgba(32,28,24,${0.42 + p.edgeVignetteOpacity * 0.35}) 100%)`,
                               mixBlendMode: "multiply",
-                              opacity: Math.min(0.58, p.edgeVignetteOpacity + 0.08),
+                              opacity: Math.min(
+                                0.58,
+                                (p.edgeVignetteOpacity + 0.08) * photoReadabilityMul,
+                              ),
                             }}
                             aria-hidden
                           />
                           <div
                             className="pointer-events-none absolute inset-0 z-[10]"
                             style={{
-                              opacity: p.wrinkleOpacity,
+                              opacity: p.wrinkleOpacity * photoReadabilityMul,
                               mixBlendMode: "multiply",
                               backgroundImage: WRINKLE_DATA_URI,
                               backgroundSize: "200px 200px",
@@ -1665,7 +1679,8 @@ export function AutoCollageGenerator() {
                             style={{
                               background: preset.pieceInkOverlay,
                               mixBlendMode: preset.pieceInkOverlayBlend,
-                              opacity: preset.pieceInkOverlayOpacity,
+                              opacity:
+                                preset.pieceInkOverlayOpacity * photoReadabilityMul,
                             }}
                             aria-hidden
                           />

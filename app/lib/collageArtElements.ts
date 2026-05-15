@@ -260,6 +260,8 @@ export type ComputeArtElementsParams = {
   focalIndex: number;
   /** Fewer decorations on phone/tablet layout pass */
   liteDecor?: boolean;
+  /** 6+ photos: slightly fewer art bits so faces stay visible */
+  manyPhotos?: boolean;
 };
 
 /**
@@ -270,7 +272,8 @@ export type ComputeArtElementsParams = {
 export function computeCollageArtElements(
   params: ComputeArtElementsParams,
 ): ArtLayoutElement[] {
-  const { mood, salt, styleId, density, pieces, focalIndex, liteDecor } = params;
+  const { mood, salt, styleId, density, pieces, focalIndex, liteDecor, manyPhotos } =
+    params;
   const seed =
     hashString(mood) ^
     salt ^
@@ -286,6 +289,7 @@ export function computeCollageArtElements(
         ? Math.floor(rand(rng, 7, 10))
         : Math.floor(rand(rng, 9, 13));
   if (liteDecor) count = Math.max(4, Math.floor(count * 0.55));
+  if (manyPhotos) count = Math.max(4, Math.floor(count * 0.88));
 
   const focal = pieces[focalIndex];
   const avoidFocal = focal ? inflate(pieceRect(focal), 9) : null;
