@@ -14,6 +14,10 @@ import {
   type CollageStyleId,
 } from "@/app/lib/collageStylePresets";
 import {
+  computeCollageArtElements,
+  type ArtDensityId,
+} from "@/app/lib/collageArtElements";
+import {
   CANVAS_FORMATS,
   DEFAULT_CANVAS_FORMAT_ID,
   getCanvasFormat,
@@ -52,6 +56,7 @@ import {
   ShareCommunityFragmentModal,
   type ShareCommunityFragmentPayload,
 } from "./ShareCommunityFragmentModal";
+import { CollageArtElementsLayer } from "./CollageArtElements";
 import { motion, useReducedMotion } from "framer-motion";
 import { domToBlob } from "modern-screenshot";
 import {
@@ -347,6 +352,8 @@ export function AutoCollageGenerator() {
   const [moodFitPreviewPx, setMoodFitPreviewPx] = useState<number | null>(null);
   const [moodFitWarnCollage, setMoodFitWarnCollage] = useState(false);
   const [moodFitWarnPreview, setMoodFitWarnPreview] = useState(false);
+  const [artElementsEnabled, setArtElementsEnabled] = useState(true);
+  const [artDensity, setArtDensity] = useState<ArtDensityId>("balanced");
 
   const preset = useMemo(() => getStylePreset(styleId), [styleId]);
   const canvasFormat = useMemo(
@@ -414,6 +421,29 @@ export function AutoCollageGenerator() {
     compositionMode,
     canvasFormat,
     layoutEngineOptions,
+  ]);
+
+  /** Procedural mixed-media layer (regenerates with Generate / Regenerate layout). */
+  const collageArtElements = useMemo(() => {
+    if (!layout || !artElementsEnabled) return [];
+    const moodKey = mood.trim() || "a hush between heartbeats";
+    return computeCollageArtElements({
+      mood: moodKey,
+      salt,
+      styleId,
+      density: artDensity,
+      pieces: layout.pieces,
+      focalIndex: layout.focalIndex,
+      liteDecor: viewportBand !== "full",
+    });
+  }, [
+    layout,
+    artElementsEnabled,
+    mood,
+    salt,
+    styleId,
+    artDensity,
+    viewportBand,
   ]);
 
   const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -934,6 +964,61 @@ export function AutoCollageGenerator() {
                   </button>
                 );
               })}
+            </div>
+          </fieldset>
+
+          <fieldset className="min-w-0 border-0 p-0">
+            <legend className="font-body text-sm italic text-ink-soft">
+              Mixed-media art elements
+            </legend>
+            <p className="font-body mt-2 max-w-2xl text-xs leading-relaxed text-ink-soft/90">
+              Automatic tape, paper scraps, thread, and texture layers (no random words) —
+              tuned to your style. Turn off for a cleaner photo-first board.
+            </p>
+            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
+              <label className="font-body flex cursor-pointer items-center gap-3 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={artElementsEnabled}
+                  onChange={(e) => setArtElementsEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded border-ink/25 text-ink accent-ink"
+                />
+                <span>Art elements on collage</span>
+              </label>
+              <div
+                className="flex flex-wrap items-center gap-2"
+                role="radiogroup"
+                aria-label="Art element density"
+              >
+                <span className="font-body text-[0.65rem] uppercase tracking-[0.14em] text-ink-soft/85">
+                  Density
+                </span>
+                {(
+                  [
+                    ["minimal", "Minimal"],
+                    ["balanced", "Balanced"],
+                    ["rich", "Rich"],
+                  ] as const
+                ).map(([id, label]) => {
+                  const selected = artDensity === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setArtDensity(id)}
+                      className={`font-body rounded-[2px_4px_3px_2px] border px-3 py-1.5 text-xs transition-[background-color,border-color] duration-500 ${
+                        selected
+                          ? "border-ink/30 bg-cream/90 text-ink"
+                          : "border-ink/12 bg-cream/45 text-ink-soft hover:border-ink/20 hover:bg-cream/75"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </fieldset>
 
@@ -1472,6 +1557,11 @@ export function AutoCollageGenerator() {
                   />
                 ))}
 
+                <CollageArtElementsLayer
+                  elements={collageArtElements.filter((e) => e.zIndex < 20)}
+                  styleId={styleId}
+                />
+
                 {layout.pieces.map((p, i) => {
                   const slotIdx = layout.imagePermutation[i] ?? i;
                   const url = slots[slotIdx]?.url;
@@ -1608,6 +1698,11 @@ export function AutoCollageGenerator() {
                     </motion.div>
                   );
                 })}
+
+                <CollageArtElementsLayer
+                  elements={collageArtElements.filter((e) => e.zIndex >= 20)}
+                  styleId={styleId}
+                />
 
                 {layout.tapes.map((t, i) => (
                   <div
