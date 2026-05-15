@@ -1,6 +1,6 @@
 "use client";
 
-import { computeCollageLayout } from "@/app/lib/collageLayout";
+import { computeCollageLayout, scrapMaterialShadow } from "@/app/lib/collageLayout";
 import {
   COMPOSITION_MODE_IDS,
   DEFAULT_COMPOSITION_MODE,
@@ -218,6 +218,9 @@ const GRAIN_DATA_URI =
 const WRINKLE_DATA_URI =
   'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 256 256\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'w\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.055\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23w)\'/%3E%3C/svg%3E")';
 
+/** Semi-transparent yellowed masking tape — layered over photos */
+const MASKING_TAPE_LAYERS = `repeating-linear-gradient(91deg, transparent, transparent 2px, rgba(255,252,246,0.07) 2px, rgba(255,252,246,0.07) 3px), linear-gradient(94deg, rgba(255,244,214,0.62) 0%, rgba(236,216,160,0.52) 45%, rgba(248,232,196,0.55) 100%)`;
+
 function paperCurlOverlay(corner: 0 | 1 | 2 | 3): CSSProperties {
   const common: CSSProperties = {
     position: "absolute",
@@ -234,7 +237,7 @@ function paperCurlOverlay(corner: 0 | 1 | 2 | 3): CSSProperties {
         width: "44%",
         height: "44%",
         background:
-          "linear-gradient(140deg, rgba(255,252,248,0.62) 0%, rgba(42,36,32,0.08) 38%, transparent 72%)",
+          "linear-gradient(140deg, rgba(255,252,248,0.68) 0%, rgba(42,36,32,0.1) 38%, transparent 72%)",
       };
     case 1:
       return {
@@ -244,7 +247,7 @@ function paperCurlOverlay(corner: 0 | 1 | 2 | 3): CSSProperties {
         width: "44%",
         height: "44%",
         background:
-          "linear-gradient(220deg, rgba(255,252,248,0.52) 0%, rgba(42,36,32,0.07) 40%, transparent 72%)",
+          "linear-gradient(220deg, rgba(255,252,248,0.58) 0%, rgba(42,36,32,0.09) 40%, transparent 72%)",
       };
     case 2:
       return {
@@ -254,7 +257,7 @@ function paperCurlOverlay(corner: 0 | 1 | 2 | 3): CSSProperties {
         width: "44%",
         height: "44%",
         background:
-          "linear-gradient(42deg, rgba(255,252,248,0.48) 0%, rgba(42,36,32,0.09) 42%, transparent 72%)",
+          "linear-gradient(42deg, rgba(255,252,248,0.54) 0%, rgba(42,36,32,0.1) 42%, transparent 72%)",
       };
     default:
       return {
@@ -264,7 +267,7 @@ function paperCurlOverlay(corner: 0 | 1 | 2 | 3): CSSProperties {
         width: "44%",
         height: "44%",
         background:
-          "linear-gradient(312deg, rgba(255,252,248,0.5) 0%, rgba(42,36,32,0.08) 40%, transparent 72%)",
+          "linear-gradient(312deg, rgba(255,252,248,0.56) 0%, rgba(42,36,32,0.09) 40%, transparent 72%)",
       };
   }
 }
@@ -768,10 +771,10 @@ export function AutoCollageGenerator() {
         : `3px 12px 24px var(--shadow), ${preset.innerVignette}`;
   const innerPaperShellClass =
     viewportBand === "full"
-      ? "shadow-[inset_0_0_48px_rgba(61,56,50,0.045)]"
+      ? "shadow-[inset_0_0_56px_rgba(55,48,40,0.055),inset_0_0_12px_rgba(255,252,246,0.04)]"
       : viewportBand === "cozy"
-        ? "shadow-[inset_0_0_28px_rgba(61,56,50,0.038)]"
-        : "shadow-[inset_0_0_18px_rgba(61,56,50,0.032)]";
+        ? "shadow-[inset_0_0_34px_rgba(55,48,40,0.048)]"
+        : "shadow-[inset_0_0_22px_rgba(55,48,40,0.042)]";
 
   return (
     <section
@@ -1406,7 +1409,7 @@ export function AutoCollageGenerator() {
                 <div
                   className="pointer-events-none absolute inset-0 z-[3]"
                   style={{
-                    opacity: Math.min(0.42, preset.grainSvgOpacity * paperSurface.grainOpacityMul * 0.85),
+                    opacity: Math.min(0.42, preset.grainSvgOpacity * paperSurface.grainOpacityMul * 0.92),
                     mixBlendMode: "multiply",
                     backgroundImage: GRAIN_DATA_URI,
                     filter: grainOverlayBlur,
@@ -1417,7 +1420,7 @@ export function AutoCollageGenerator() {
             )}
 
             {!showCollageLayers && (
-              <div className="absolute inset-0 z-[8] flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-cream/82 via-cream/55 to-cream/35 px-8 text-center backdrop-blur-[0.5px]">
+              <div className="absolute inset-0 z-[8] flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-[#f1e8de]/90 via-[#e8dfd4]/55 to-[#dfd4c8]/38 px-8 text-center backdrop-blur-[0.5px]">
                 <p className="font-body max-w-sm text-sm italic leading-relaxed text-ink-soft">
                   Choose a style, add three to eight images, then generate — your
                   mood board will gather here.
@@ -1465,7 +1468,7 @@ export function AutoCollageGenerator() {
                         paperSurface.scannedOpacityAdd,
                     ),
                     mixBlendMode: "multiply",
-                    backgroundImage: `repeating-linear-gradient(${preset.scannedAngleDeg}deg, rgba(61,56,50,0.022) 0px, rgba(61,56,50,0.022) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(90deg, rgba(255,252,248,0.028) 0px, transparent 2px, transparent 6px)`,
+                    backgroundImage: `repeating-linear-gradient(${preset.scannedAngleDeg}deg, rgba(61,56,50,0.032) 0px, rgba(61,56,50,0.032) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(90deg, rgba(255,252,248,0.034) 0px, transparent 2px, transparent 6px)`,
                     filter: scannedPaperBlur,
                   }}
                   aria-hidden
@@ -1486,6 +1489,23 @@ export function AutoCollageGenerator() {
                 <div
                   className={`absolute inset-[1.8%] overflow-hidden rounded-[2px_3px_2px_2px] ${innerPaperShellClass}`}
                 >
+                <div
+                  className="pointer-events-none absolute inset-0 z-0"
+                  style={{
+                    background: `radial-gradient(ellipse 76% 58% at 30% 26%, rgba(255,250,242,0.5) 0%, transparent 54%),
+                      radial-gradient(ellipse 48% 40% at 84% 80%, rgba(95,82,68,0.08) 0%, transparent 50%),
+                      linear-gradient(164deg, rgba(252,246,236,0.2) 0%, rgba(235,228,216,0.12) 55%, rgba(220,210,198,0.1) 100%)`,
+                    mixBlendMode: "multiply",
+                    opacity: reduce
+                      ? 0.32
+                      : viewportBand === "full"
+                        ? 0.52
+                        : viewportBand === "cozy"
+                          ? 0.44
+                          : 0.38,
+                  }}
+                  aria-hidden
+                />
                 <svg
                   className="pointer-events-none absolute h-0 w-0 overflow-hidden"
                   aria-hidden
@@ -1524,23 +1544,21 @@ export function AutoCollageGenerator() {
                 {layout.scraps.map((s, i) => (
                   <div
                     key={`scrap-${salt}-${i}`}
-                    className={`torn pointer-events-none absolute ${
-                      viewportBand === "full"
-                        ? s.zIndex < 22
-                          ? "shadow-sm"
-                          : "shadow-[6px_18px_32px_rgba(45,40,35,0.22)]"
-                        : "shadow-sm"
-                    }`}
+                    className="torn pointer-events-none absolute rounded-[1px]"
                     style={{
                       left: `${s.leftPct}%`,
                       top: `${s.topPct}%`,
                       width: s.w,
                       height: s.h,
                       zIndex: s.zIndex,
-                      opacity: 0.82,
+                      opacity: viewportBand === "full" ? 0.84 : 0.8,
                       mixBlendMode: "multiply",
                       transform: `translate(-50%, -50%) rotate(${s.rotate}deg)`,
                       background: s.bg,
+                      boxShadow:
+                        viewportBand === "full"
+                          ? scrapMaterialShadow(s.zIndex)
+                          : "1px 6px 14px rgba(45,40,35,0.14), 0 0 0 1px rgba(62,56,48,0.04)",
                     }}
                     aria-hidden
                   />
@@ -1564,10 +1582,11 @@ export function AutoCollageGenerator() {
                     WebkitClipPath: p.clipPathCss,
                   };
                   const edgeFilterRef = `url(#collage-edge-${edgeFilterUid}-${salt}-${i})`;
-                  const paperInset =
-                    "inset 0 0 30px rgba(42,38,34,0.2), inset 0 0 12px rgba(255,252,248,0.08)";
+                  const paperInset = isFocal
+                    ? "inset 0 0 36px rgba(38,32,28,0.24), inset 0 0 14px rgba(255,252,248,0.1), inset 0 0 2px rgba(255,252,248,0.15)"
+                    : "inset 0 0 28px rgba(42,38,34,0.2), inset 0 0 10px rgba(255,252,248,0.07)";
                   const paperDepth = isFocal
-                    ? `${paperInset}, 0 0 0 1px rgba(255,255,255,0.22)`
+                    ? `${paperInset}, 0 0 0 1px rgba(255,252,248,0.24)`
                     : paperInset;
 
                   return (
@@ -1620,8 +1639,12 @@ export function AutoCollageGenerator() {
                             background: preset.behindGradient,
                             boxShadow:
                               viewportBand === "full"
-                                ? "5px 18px 30px rgba(61,56,50,0.15)"
-                                : "2px 10px 18px rgba(61,56,50,0.1)",
+                                ? isFocal
+                                  ? "7px 26px 42px rgba(42,36,32,0.24), 4px 14px 26px rgba(55,48,42,0.16), 1px 3px 8px rgba(55,50,45,0.1)"
+                                  : "5px 20px 34px rgba(58,52,46,0.18), 3px 10px 20px rgba(58,52,46,0.12)"
+                                : isFocal
+                                  ? "4px 14px 26px rgba(61,56,50,0.16)"
+                                  : "2px 10px 18px rgba(61,56,50,0.12)",
                           }}
                           aria-hidden
                         />
@@ -1700,25 +1723,36 @@ export function AutoCollageGenerator() {
                   styleId={styleId}
                 />
 
-                {layout.tapes.map((t, i) => (
-                  <div
-                    key={`tape-${salt}-${i}`}
-                    className="pointer-events-none absolute rounded-[1px]"
-                    style={{
-                      left: `${t.leftPct}%`,
-                      top: `${t.topPct}%`,
-                      width: t.width,
-                      height: t.height,
-                      opacity: t.opacity,
-                      mixBlendMode: isZine ? "normal" : "multiply",
-                      transform: `translate(-50%, -50%) rotate(${t.rotate}deg)`,
-                      zIndex: t.zIndex,
-                      background: preset.tapeGradient,
-                      boxShadow: preset.tapeBoxShadow,
-                    }}
-                    aria-hidden
-                  />
-                ))}
+                {layout.tapes.map((t, i) => {
+                  const isMasking = t.tapeKind === "masking";
+                  return (
+                    <div
+                      key={`tape-${salt}-${i}`}
+                      className="pointer-events-none absolute rounded-[1px]"
+                      style={{
+                        left: `${t.leftPct}%`,
+                        top: `${t.topPct}%`,
+                        width: t.width,
+                        height: t.height,
+                        opacity:
+                          isMasking && !isZine ? Math.min(0.94, t.opacity * 1.08) : t.opacity,
+                        mixBlendMode:
+                          isZine
+                            ? "normal"
+                            : isMasking
+                              ? "multiply"
+                              : "multiply",
+                        transform: `translate(-50%, -50%) rotate(${t.rotate}deg)`,
+                        zIndex: t.zIndex,
+                        background: isMasking ? MASKING_TAPE_LAYERS : preset.tapeGradient,
+                        boxShadow: isMasking
+                          ? `0 2px 5px rgba(42,36,30,0.2), 0 1px 0 rgba(255,252,240,0.25), inset 0 0 0 1px rgba(255,250,232,0.4), inset 0 -2px 5px rgba(95,78,55,0.1)`
+                          : preset.tapeBoxShadow,
+                      }}
+                      aria-hidden
+                    />
+                  );
+                })}
 
                 {moodCaptionPlacement && (
                   <div
@@ -1753,7 +1787,7 @@ export function AutoCollageGenerator() {
                   className="pointer-events-none absolute inset-0"
                   style={{
                     opacity:
-                      preset.grainSvgOpacity * paperSurface.grainOpacityMul,
+                      preset.grainSvgOpacity * paperSurface.grainOpacityMul * 1.08,
                     mixBlendMode: "multiply",
                     backgroundImage: GRAIN_DATA_URI,
                     filter: grainOverlayBlur,

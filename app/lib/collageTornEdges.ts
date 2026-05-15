@@ -127,7 +127,7 @@ export function buildEdgeNoiseParams(rng: () => number, profile: TearEdgeProfile
       edgeNoiseOctaves: 3,
       curlCorner: Math.floor(rng() * 4) as 0 | 1 | 2 | 3,
       edgeVignetteOpacity: rand(rng, 0.12, 0.26),
-      wrinkleOpacity: rand(rng, 0.04, 0.1),
+      wrinkleOpacity: rand(rng, 0.05, 0.12),
     };
   }
   return {
@@ -138,7 +138,7 @@ export function buildEdgeNoiseParams(rng: () => number, profile: TearEdgeProfile
     edgeNoiseOctaves: profile === "archive" ? 4 : 3,
     curlCorner: Math.floor(rng() * 4) as 0 | 1 | 2 | 3,
     edgeVignetteOpacity: rand(rng, 0.22, 0.42),
-    wrinkleOpacity: rand(rng, 0.06, 0.14),
+    wrinkleOpacity: rand(rng, 0.08, 0.16),
   };
 }
 

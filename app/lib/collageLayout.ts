@@ -41,6 +41,8 @@ export type TapeLayout = {
   rotate: number;
   opacity: number;
   zIndex: number;
+  /** Semi-transparent masking vs matte paper-strip tape */
+  tapeKind: "masking" | "opaque";
 };
 
 export type ScrapLayout = {
@@ -114,25 +116,92 @@ function shuffleInPlace<T>(arr: T[], rng: () => number) {
 }
 
 const SHADOW_FOCAL = [
-  "14px 36px 52px rgba(28,24,20,0.32), 0 0 0 1px rgba(255,255,255,0.1)",
-  "12px 32px 48px rgba(32,28,24,0.3), -1px -1px 0 rgba(255,255,255,0.06)",
-  "16px 40px 56px rgba(38,32,28,0.28), inset 0 -1px 0 rgba(255,252,248,0.1)",
+  "0 2px 3px rgba(24,20,18,0.14), 8px 18px 32px rgba(38,32,28,0.22), 20px 48px 68px rgba(22,18,16,0.36), 0 0 0 1px rgba(255,252,248,0.14)",
+  "0 1px 2px rgba(28,24,20,0.12), 10px 22px 38px rgba(42,36,32,0.2), 18px 44px 64px rgba(26,22,18,0.34), -1px -1px 0 rgba(255,252,248,0.08)",
+  "0 3px 5px rgba(22,18,16,0.16), 12px 28px 46px rgba(34,30,26,0.24), 22px 52px 72px rgba(30,26,22,0.32), inset 0 -1px 0 rgba(255,252,248,0.1)",
 ];
 
 const SHADOW_SECONDARY = [
-  "14px 38px 56px rgba(45,40,35,0.32)",
-  "10px 28px 44px rgba(61,56,50,0.26), 0 0 0 1px rgba(255,255,255,0.07)",
-  "20px 48px 60px rgba(35,32,28,0.28)",
-  "8px 22px 38px rgba(61,56,50,0.2), 6px 22px 36px rgba(61,56,50,0.14)",
-  "16px 40px 48px rgba(50,45,40,0.24), -2px -2px 0 rgba(255,255,255,0.05)",
+  "0 1px 2px rgba(45,40,35,0.12), 8px 22px 40px rgba(48,42,36,0.26), 3px 10px 22px rgba(55,48,42,0.14)",
+  "6px 20px 36px rgba(52,46,40,0.24), 0 0 0 1px rgba(255,252,248,0.06), 2px 6px 14px rgba(58,52,46,0.12)",
+  "10px 28px 44px rgba(42,38,32,0.26), 4px 12px 24px rgba(55,50,45,0.15)",
+  "4px 16px 32px rgba(58,52,46,0.2), 10px 32px 50px rgba(40,36,30,0.18)",
 ];
 
 const SHADOW_TERTIARY = [
-  "8px 22px 38px rgba(61,56,50,0.2), 0 0 0 1px rgba(255,255,255,0.06)",
-  "10px 26px 42px rgba(50,45,40,0.18)",
-  "6px 16px 30px rgba(61,56,50,0.16)",
-  "12px 30px 44px rgba(45,40,35,0.18)",
+  "0 1px 1px rgba(55,50,45,0.1), 3px 10px 22px rgba(58,52,46,0.16), 0 0 0 1px rgba(255,252,248,0.05)",
+  "2px 8px 18px rgba(52,48,42,0.15), 1px 3px 8px rgba(58,54,48,0.1)",
+  "4px 14px 26px rgba(50,45,40,0.17)",
+  "1px 4px 12px rgba(58,54,48,0.12), 6px 16px 28px rgba(48,44,38,0.14)",
 ];
+
+/** Scrunched paper scraps: contact shadow scales with stacking height */
+export const SCRAP_SHADOW_DEPTH_LOW =
+  "1px 3px 7px rgba(44,38,34,0.11), 0 0 0 1px rgba(62,56,48,0.04)";
+export const SCRAP_SHADOW_DEPTH_MID =
+  "2px 8px 16px rgba(45,40,35,0.16), 1px 4px 11px rgba(52,46,42,0.12), 0 0 0 1px rgba(255,252,246,0.06)";
+export const SCRAP_SHADOW_DEPTH_HIGH =
+  "4px 14px 30px rgba(38,34,28,0.22), 2px 7px 18px rgba(48,42,38,0.15), 0 1px 0 rgba(255,252,248,0.2)";
+
+export function scrapMaterialShadow(zIndex: number): string {
+  if (zIndex < 20) return SCRAP_SHADOW_DEPTH_LOW;
+  if (zIndex < 56) return SCRAP_SHADOW_DEPTH_MID;
+  return SCRAP_SHADOW_DEPTH_HIGH;
+}
+
+/** Prefer a photo corner — tape crosses the stack like real masking tape */
+function placeTapeOnPieceCorner(
+  pieces: PieceLayout[],
+  focalIndex: number,
+  rng: () => number,
+): { leftPct: number; topPct: number } | null {
+  if (!pieces.length) return null;
+  const biasFocal = rng() < 0.68;
+  const idx =
+    biasFocal && pieces[focalIndex] !== undefined
+      ? focalIndex
+      : Math.floor(rng() * pieces.length);
+  const p = pieces[idx]!;
+  const halfW = p.widthPct / 2;
+  const halfH = p.heightPct / 2;
+  const corner = Math.floor(rng() * 4);
+  const along = rand(rng, 0.42, 0.58);
+  const off = rand(rng, -2.8, 2.8);
+
+  let leftPct = p.xPct;
+  let topPct = p.yPct;
+  switch (corner) {
+    case 0: {
+      const legX = halfW * 0.88 * along;
+      const legY = -halfH * 0.82 * (1 - along);
+      leftPct += -halfW + legX + off;
+      topPct += -halfH + legY + off * 0.6;
+      break;
+    }
+    case 1: {
+      leftPct += halfW * (0.75 - along * 0.55) + off;
+      topPct += -halfH * (0.2 + along * 0.65) + off * 0.5;
+      break;
+    }
+    case 2: {
+      leftPct += -halfW * (0.15 + along * 0.7) + off;
+      topPct += halfH * (0.72 - along * 0.52) + off * 0.55;
+      break;
+    }
+    default: {
+      leftPct += halfW * (0.62 - along * 0.52) + off;
+      topPct += halfH * (-0.12 + along * 0.78) + off * 0.5;
+      break;
+    }
+  }
+
+  leftPct += rand(rng, -1.6, 1.6);
+  topPct += rand(rng, -1.6, 1.6);
+  return {
+    leftPct: clamp(leftPct, 6, 94),
+    topPct: clamp(topPct, 6, 94),
+  };
+}
 
 /** % margin from paper edge — photo centers clamped so full bbox stays inside */
 const PHOTO_PAPER_INSET = 7;
@@ -144,7 +213,26 @@ function clampPhotoCenterInsidePaper(p: PieceLayout, inset: number) {
   p.yPct = clamp(p.yPct, inset + hh, 100 - inset - hh);
 }
 
-/** Gentle pull when centers hug the outer rim (avoids “floating off the sheet”) */
+/** Nudge satellites toward the focal for light overlap / hand-assembled tension */
+function biasPiecesTowardFocalOverlap(
+  pieces: PieceLayout[],
+  focal: number,
+  rng: () => number,
+) {
+  const fp = pieces[focal];
+  if (!fp) return;
+  for (let i = 0; i < pieces.length; i++) {
+    if (i === focal) continue;
+    if (rng() > 0.33) continue;
+    const dx = fp.xPct - pieces[i]!.xPct;
+    const dy = fp.yPct - pieces[i]!.yPct;
+    const pull = rand(rng, 0.05, 0.14);
+    pieces[i]!.xPct += dx * pull;
+    pieces[i]!.yPct += dy * pull;
+    pieces[i]!.rotate += styleRotation(rng, 2.4 + rng() * 2);
+  }
+}
+
 function nudgePhotosOffPaperRim(
   pieces: PieceLayout[],
   rng: () => number,
@@ -172,6 +260,15 @@ function containAllPhotosOnPaper(pieces: PieceLayout[], rng: () => number) {
   for (const p of pieces) {
     clampPhotoCenterInsidePaper(p, PHOTO_PAPER_INSET);
   }
+}
+
+function finalizePiecePositions(
+  pieces: PieceLayout[],
+  focal: number,
+  rng: () => number,
+) {
+  biasPiecesTowardFocalOverlap(pieces, focal, rng);
+  containAllPhotosOnPaper(pieces, rng);
 }
 
 function pickLayerShadowForTier(tier: PieceTier, rng: () => number) {
@@ -462,12 +559,12 @@ function placeIllustratedSurrealPieces(
   fx = clamp(fx, 26, 74);
   fy = clamp(fy, 24, 76);
 
-  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 11 : 14);
+  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 12 : 16);
   const fw0 = rand(rng, hints.focalWidthMin, hints.focalWidthMax);
   const fh0 = rand(rng, hints.focalHeightMin, hints.focalHeightMax);
-  const focalShrink = packed ? rand(rng, 0.76, 0.88) : rand(rng, 0.86, 0.96);
-  let capW = 48;
-  let capH = 50;
+  const focalShrink = packed ? rand(rng, 0.78, 0.9) : rand(rng, 0.88, 0.99);
+  let capW = 52;
+  let capH = 54;
   switch (compositionKind) {
     case "vertical-story":
       capW = Math.min(capW, 44);
@@ -489,8 +586,8 @@ function placeIllustratedSurrealPieces(
     ...basePieceFields(rng, hints, rotCap, 0),
     xPct: fjx,
     yPct: fjy,
-    widthPct: Math.min(capW, fw0 * focalShrink),
-    heightPct: Math.min(capH, fh0 * focalShrink),
+    widthPct: Math.min(capW, fw0 * focalShrink * rand(rng, 1.04, 1.12)),
+    heightPct: Math.min(capH, fh0 * focalShrink * rand(rng, 1.04, 1.12)),
     rotate: styleRotation(rng, rotCap * 0.86),
     zIndex: 0,
     floatYOffsetPx: rand(rng, -10, 12),
@@ -515,6 +612,8 @@ function placeIllustratedSurrealPieces(
     } else if (tier === 1) {
       w = rand(rng, hints.secondaryWidthMin, hints.secondaryWidthMax + 6);
       h = rand(rng, hints.secondaryHeightMin, hints.secondaryHeightMax + 6);
+      w *= rand(rng, 0.86, 0.95);
+      h *= rand(rng, 0.86, 0.95);
     } else {
       const roll = rng();
       if (roll < 0.24) {
@@ -530,6 +629,8 @@ function placeIllustratedSurrealPieces(
         w = rand(rng, hints.tertiaryWidthMin, hints.tertiaryWidthMax + 6);
         h = rand(rng, hints.tertiaryHeightMin, hints.tertiaryHeightMax + 8);
       }
+      w *= rand(rng, 0.85, 0.94);
+      h *= rand(rng, 0.85, 0.94);
     }
 
     const slot = spiralI / Math.max(1, others.length);
@@ -591,7 +692,7 @@ function placeIllustratedSurrealPieces(
     };
   }
 
-  containAllPhotosOnPaper(pieces, rng);
+  finalizePiecePositions(pieces, focal, rng);
   return pieces;
 }
 
@@ -708,12 +809,12 @@ function placePiecesUnified(
       break;
   }
 
-  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 9 : 12);
-  const focalShrink = packed ? rand(rng, 0.68, 0.82) : rand(rng, 0.82, 0.95);
-  let fwSized = fw * focalShrink;
-  let fhSized = fh * focalShrink;
-  let capW = prof === "low-museum" && hints.focalWidthMax >= 52 ? 56 : 52;
-  let capH = prof === "low-museum" && hints.focalHeightMax >= 52 ? 50 : 48;
+  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 12 : 15);
+  const focalShrink = packed ? rand(rng, 0.74, 0.86) : rand(rng, 0.86, 0.995);
+  let fwSized = fw * focalShrink * rand(rng, 1.04, 1.12);
+  let fhSized = fh * focalShrink * rand(rng, 1.04, 1.12);
+  let capW = prof === "low-museum" && hints.focalWidthMax >= 52 ? 58 : 56;
+  let capH = prof === "low-museum" && hints.focalHeightMax >= 52 ? 53 : 52;
 
   switch (compositionKind) {
     case "vertical-story":
@@ -748,8 +849,8 @@ function placePiecesUnified(
     const pm = packedTight ? 0.76 : 0.84;
     fwSized *= pm;
     fhSized *= pm;
-    capW = Math.min(capW, packedTight ? 40 : 44);
-    capH = Math.min(capH, packedTight ? 36 : 40);
+    capW = Math.min(capW, packedTight ? 43 : 47);
+    capH = Math.min(capH, packedTight ? 38 : 42);
   }
 
   pieces[focal] = {
@@ -758,7 +859,7 @@ function placePiecesUnified(
     yPct: fjy,
     widthPct: Math.min(capW, fwSized),
     heightPct: Math.min(capH, fhSized),
-    rotate: styleRotation(rng, rotCap * 0.72),
+    rotate: styleRotation(rng, rotCap * 0.78),
     zIndex: 0,
     floatYOffsetPx: rand(rng, -8, 10),
     tier: 0,
@@ -768,10 +869,11 @@ function placePiecesUnified(
   const diag = diagonalSweepStart(prof, rng);
   const arcSpread = Math.PI * (packed ? 0.58 + rng() * 0.42 : 0.52 + rng() * 0.38);
   const rClear =
-    20 +
-    focalW * 0.3 +
-    rand(rng, 4, 16) +
-    (packed ? 8 + (count - 6) * 2.5 : 0);
+    (20 +
+      focalW * 0.3 +
+      rand(rng, 4, 16) +
+      (packed ? 8 + (count - 6) * 2.5 : 0)) *
+    rand(rng, 0.88, 0.97);
 
   let secRank = 0;
   for (const idx of others) {
@@ -786,9 +888,11 @@ function placePiecesUnified(
       const slot = (secRank - 1) / Math.max(1, secN - 0.001);
       w = rand(rng, hints.secondaryWidthMin, hints.secondaryWidthMax);
       h = rand(rng, hints.secondaryHeightMin, hints.secondaryHeightMax);
+      w *= rand(rng, 0.88, 0.97);
+      h *= rand(rng, 0.88, 0.97);
       if (packed) {
-        w = clamp(w * rand(rng, 1.04, 1.12), hints.secondaryWidthMin, hints.secondaryWidthMax + 2);
-        h = clamp(h * rand(rng, 1.03, 1.1), hints.secondaryHeightMin, hints.secondaryHeightMax + 2);
+        w = clamp(w * rand(rng, 0.96, 1.05), hints.secondaryWidthMin, hints.secondaryWidthMax + 1);
+        h = clamp(h * rand(rng, 0.96, 1.04), hints.secondaryHeightMin, hints.secondaryHeightMax + 1);
       }
 
       let angle =
@@ -848,9 +952,13 @@ function placePiecesUnified(
       if (!packed && rng() < 0.18) {
         w = rand(rng, 7, 14);
         h = rand(rng, 9, 18);
+        w *= rand(rng, 0.82, 0.92);
+        h *= rand(rng, 0.82, 0.92);
       } else {
         w = rand(rng, hints.tertiaryWidthMin, hints.tertiaryWidthMax);
         h = rand(rng, hints.tertiaryHeightMin, hints.tertiaryHeightMax);
+        w *= rand(rng, 0.82, 0.94);
+        h *= rand(rng, 0.82, 0.94);
         if (packed) {
           w = Math.max(w, hints.tertiaryWidthMin + 1.5);
           h = Math.max(h, hints.tertiaryHeightMin + 2);
@@ -885,7 +993,7 @@ function placePiecesUnified(
       }
     }
 
-    const jitAmt = tier === 1 ? 14 : packed ? 14 : 22;
+    const jitAmt = tier === 1 ? 17 + rng() * 5 : packed ? 16 + rng() * 4 : 26;
     const [jx, jy] = jitter(mode, rng, x, y, jitAmt);
     pieces[idx] = {
       ...basePieceFields(rng, hints, rotCap, tier),
@@ -901,7 +1009,7 @@ function placePiecesUnified(
     };
   }
 
-  containAllPhotosOnPaper(pieces, rng);
+  finalizePiecePositions(pieces, focal, rng);
 
   return pieces;
 }
@@ -1016,22 +1124,66 @@ export function computeCollageLayout(
   );
   const tapes: TapeLayout[] = [];
   for (let t = 0; t < tapeCount; t++) {
-    const pos = nearFocal(rng, decorBias, fp, () => ({
-      leftPct: rand(rng, 0, 100),
-      topPct: rand(rng, 0, 100),
-    }));
-    const tapeBack = rng() < 0.42;
+    const taper = rng();
+    const tapeKind: "masking" | "opaque" = taper < 0.78 ? "masking" : "opaque";
+
+    let leftPct = 50;
+    let topPct = 50;
+    let width: number;
+    let height: number;
+    let rotate: number;
+    let tapeBack: boolean;
+
+    if (tapeKind === "masking") {
+      tapeBack = rng() < 0.12;
+      width = 56 + rng() * 78;
+      height = 6 + rng() * 9;
+      const cornerPos =
+        rng() < 0.76 ? placeTapeOnPieceCorner(pieces, focalIndex, rng) : null;
+      if (cornerPos) {
+        leftPct = cornerPos.leftPct;
+        topPct = cornerPos.topPct;
+        rotate = rand(rng, -64, 64) + (rng() - 0.5) * 14;
+      } else {
+        const pos = nearFocal(rng, decorBias * 0.55, fp, () => ({
+          leftPct: rand(rng, 0, 100),
+          topPct: rand(rng, 0, 100),
+        }));
+        leftPct = pos.leftPct;
+        topPct = pos.topPct;
+        rotate = rand(rng, -58, 58);
+      }
+    } else {
+      tapeBack = rng() < 0.42;
+      const pos = nearFocal(rng, decorBias, fp, () => ({
+        leftPct: rand(rng, 0, 100),
+        topPct: rand(rng, 0, 100),
+      }));
+      leftPct = pos.leftPct;
+      topPct = pos.topPct;
+      width = 38 + rng() * 72;
+      height = 11 + rng() * 20;
+      rotate = rand(rng, -52, 52);
+    }
+
+    const opacityMul = tapeKind === "masking" ? 0.82 + rng() * 0.14 : 1;
+
     tapes.push({
-      ...pos,
-      width: 38 + rng() * 72,
-      height: 11 + rng() * 20,
-      rotate: rand(rng, -52, 52),
+      leftPct,
+      topPct,
+      width,
+      height,
+      rotate,
       opacity:
-        hints.tapeOpacityMin +
-        rng() * (hints.tapeOpacityMax - hints.tapeOpacityMin),
+        (hints.tapeOpacityMin +
+          rng() * (hints.tapeOpacityMax - hints.tapeOpacityMin)) *
+        opacityMul,
       zIndex: tapeBack
-        ? 18 + Math.floor(rng() * 22)
-        : 78 + Math.floor(rng() * 34),
+        ? 16 + Math.floor(rng() * 22)
+        : tapeKind === "masking"
+          ? 84 + Math.floor(rng() * 34)
+          : 76 + Math.floor(rng() * 36),
+      tapeKind,
     });
   }
 
