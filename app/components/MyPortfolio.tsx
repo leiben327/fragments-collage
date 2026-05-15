@@ -285,14 +285,14 @@ function PortfolioCard({
         )}
 
         <div className="font-body mt-3 flex flex-wrap gap-x-2 gap-y-1 text-[0.62rem] uppercase tracking-[0.14em] text-ink-soft/72">
-          <span>{item.styleLabel}</span>
+          <span>{item.collageStyle}</span>
           <span aria-hidden>·</span>
-          <span>{item.canvasFormatLabel}</span>
-          {item.challengeTag ? (
+          <span>{item.canvasFormat}</span>
+          {item.challengePrompt ? (
             <>
               <span aria-hidden>·</span>
               <span className="max-w-full basis-full normal-case italic tracking-normal text-ink-soft/85 sm:basis-auto">
-                {item.challengeTag}
+                {item.challengePrompt}
               </span>
             </>
           ) : null}

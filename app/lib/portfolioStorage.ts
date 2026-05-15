@@ -1,19 +1,18 @@
 import {
   PORTFOLIO_STORAGE_KEY,
+  PORTFOLIO_STORAGE_KEY_LEGACY,
   PORTFOLIO_UPDATED_EVENT,
 } from "@/app/lib/portfolioKeys";
 
+/** One saved collage in the local portfolio (localStorage). */
 export type PortfolioEntry = {
   id: string;
-  createdAt: number;
-  /** PNG data URL from the same export pipeline as Download PNG */
   imageDataUrl: string;
   moodSentence: string;
-  styleId: string;
-  styleLabel: string;
-  canvasFormatId: string;
-  canvasFormatLabel: string;
-  challengeTag?: string;
+  collageStyle: string;
+  canvasFormat: string;
+  challengePrompt?: string;
+  createdAt: number;
   title?: string;
   reflection?: string;
 };
@@ -24,18 +23,60 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
-function isValidEntry(v: unknown): v is PortfolioEntry {
-  if (!isRecord(v)) return false;
-  if (typeof v.id !== "string" || !v.id) return false;
-  if (typeof v.createdAt !== "number") return false;
-  if (typeof v.imageDataUrl !== "string" || !v.imageDataUrl.startsWith("data:"))
-    return false;
-  if (typeof v.moodSentence !== "string") return false;
-  if (typeof v.styleId !== "string") return false;
-  if (typeof v.styleLabel !== "string") return false;
-  if (typeof v.canvasFormatId !== "string") return false;
-  if (typeof v.canvasFormatLabel !== "string") return false;
-  return true;
+/** Normalize legacy rows (styleLabel / canvasFormatId, etc.) into the current shape. */
+export function normalizePortfolioEntry(raw: Record<string, unknown>): PortfolioEntry | null {
+  const id = typeof raw.id === "string" ? raw.id : "";
+  const imageDataUrl = typeof raw.imageDataUrl === "string" ? raw.imageDataUrl : "";
+  const moodSentence = typeof raw.moodSentence === "string" ? raw.moodSentence : "";
+  const createdAt =
+    typeof raw.createdAt === "number"
+      ? raw.createdAt
+      : typeof raw.createdAt === "string"
+        ? Number(raw.createdAt)
+        : NaN;
+  if (!id || !imageDataUrl.startsWith("data:") || !moodSentence || !Number.isFinite(createdAt)) {
+    return null;
+  }
+
+  const collageStyle =
+    typeof raw.collageStyle === "string"
+      ? raw.collageStyle
+      : typeof raw.styleLabel === "string"
+        ? raw.styleLabel
+        : typeof raw.styleId === "string"
+          ? raw.styleId
+          : "";
+
+  const canvasFormat =
+    typeof raw.canvasFormat === "string"
+      ? raw.canvasFormat
+      : typeof raw.canvasFormatLabel === "string"
+        ? raw.canvasFormatLabel
+        : typeof raw.canvasFormatId === "string"
+          ? raw.canvasFormatId
+          : "";
+
+  if (!collageStyle.trim() || !canvasFormat.trim()) return null;
+
+  const challengePrompt =
+    typeof raw.challengePrompt === "string"
+      ? raw.challengePrompt || undefined
+      : typeof raw.challengeTag === "string"
+        ? raw.challengeTag || undefined
+        : undefined;
+
+  return {
+    id,
+    imageDataUrl,
+    moodSentence,
+    collageStyle,
+    canvasFormat,
+    challengePrompt,
+    createdAt,
+    title: typeof raw.title === "string" ? raw.title || undefined : undefined,
+    reflection:
+      typeof raw.reflection === "string" ? raw.reflection || undefined : undefined,
+  };
 }
 
 export function newPortfolioId(): string {
@@ -55,21 +96,55 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export function loadPortfolio(): PortfolioEntry[] {
-  if (typeof window === "undefined") return [];
+function parseStoredArray(raw: string | null): PortfolioEntry[] {
+  if (!raw) return [];
   try {
-    const raw = localStorage.getItem(PORTFOLIO_STORAGE_KEY);
-    if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidEntry);
+    const out: PortfolioEntry[] = [];
+    for (const row of parsed) {
+      if (!isRecord(row)) continue;
+      const n = normalizePortfolioEntry(row);
+      if (n) out.push(n);
+    }
+    return out;
   } catch {
     return [];
   }
 }
 
-function persist(entries: PortfolioEntry[]) {
-  localStorage.setItem(PORTFOLIO_STORAGE_KEY, JSON.stringify(entries));
+function migrateLegacyIfNeeded(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (localStorage.getItem(PORTFOLIO_STORAGE_KEY)) return;
+    const legacy = localStorage.getItem(PORTFOLIO_STORAGE_KEY_LEGACY);
+    if (!legacy) return;
+    localStorage.setItem(PORTFOLIO_STORAGE_KEY, legacy);
+    localStorage.removeItem(PORTFOLIO_STORAGE_KEY_LEGACY);
+    console.log(
+      "[portfolio] migrated items from legacy key to",
+      PORTFOLIO_STORAGE_KEY,
+    );
+  } catch (e) {
+    console.warn("[portfolio] legacy migration skipped", e);
+  }
+}
+
+export function loadPortfolio(): PortfolioEntry[] {
+  if (typeof window === "undefined") return [];
+  migrateLegacyIfNeeded();
+  return parseStoredArray(localStorage.getItem(PORTFOLIO_STORAGE_KEY));
+}
+
+function persist(entries: PortfolioEntry[]): void {
+  const json = JSON.stringify(entries);
+  localStorage.setItem(PORTFOLIO_STORAGE_KEY, json);
+  console.log(
+    "[portfolio] localStorage updated:",
+    PORTFOLIO_STORAGE_KEY,
+    "count=",
+    entries.length,
+  );
   try {
     window.dispatchEvent(new CustomEvent(PORTFOLIO_UPDATED_EVENT));
   } catch {
@@ -79,7 +154,12 @@ function persist(entries: PortfolioEntry[]) {
 
 export function addPortfolioEntry(entry: PortfolioEntry): void {
   const next = [entry, ...loadPortfolio()].slice(0, MAX_ENTRIES);
-  persist(next);
+  try {
+    persist(next);
+  } catch (e) {
+    console.error("[portfolio] localStorage.setItem failed", e);
+    throw e;
+  }
 }
 
 export function updatePortfolioEntry(
