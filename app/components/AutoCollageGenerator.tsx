@@ -17,6 +17,12 @@ import {
   computeCollageArtElements,
   type ArtDensityId,
 } from "@/app/lib/collageArtElements";
+import type { CollageBackgroundId } from "@/app/lib/collageBackgroundSurfaces";
+import {
+  getCollageBackgroundSurface,
+  resolveCaptionTextShadow,
+  suggestedBackgroundIdsForStyle,
+} from "@/app/lib/collageBackgroundSurfaces";
 import {
   CANVAS_FORMATS,
   DEFAULT_CANVAS_FORMAT_ID,
@@ -57,6 +63,10 @@ import {
   type ShareCommunityFragmentPayload,
 } from "./ShareCommunityFragmentModal";
 import { CollageArtElementsLayer } from "./CollageArtElements";
+import {
+  CollageBackgroundPicker,
+  CollageBoardSurfaceLayers,
+} from "./CollageBackgroundPicker";
 import { motion, useReducedMotion } from "framer-motion";
 import { domToBlob } from "modern-screenshot";
 import {
@@ -325,6 +335,9 @@ export function AutoCollageGenerator() {
   const { slots, addImageFiles, removeAt, clearAll } = useImageSlots();
 
   const [styleId, setStyleId] = useState<CollageStyleId>(DEFAULT_COLLAGE_STYLE);
+  const [paperSurfaceId, setPaperSurfaceId] = useState<CollageBackgroundId>(() =>
+    suggestedBackgroundIdsForStyle(DEFAULT_COLLAGE_STYLE)[0]!,
+  );
   const [compositionMode, setCompositionMode] = useState<CompositionModeId>(
     DEFAULT_COMPOSITION_MODE,
   );
@@ -356,6 +369,17 @@ export function AutoCollageGenerator() {
   const [artDensity, setArtDensity] = useState<ArtDensityId>("balanced");
 
   const preset = useMemo(() => getStylePreset(styleId), [styleId]);
+
+  const paperSurface = useMemo(
+    () => getCollageBackgroundSurface(paperSurfaceId),
+    [paperSurfaceId],
+  );
+
+  const captionShadowResolved = useMemo(
+    () => resolveCaptionTextShadow(preset, paperSurface),
+    [preset, paperSurface],
+  );
+
   const canvasFormat = useMemo(
     () => getCanvasFormat(canvasFormatId),
     [canvasFormatId],
@@ -523,13 +547,13 @@ export function AutoCollageGenerator() {
       () =>
         collageNodeToPngBlob(
           node,
-          preset.exportBackgroundColor,
+          paperSurface.exportBackgroundColor,
           canvasFormat.exportWidth,
           canvasFormat.exportHeight,
           screenshotScaleForBand(viewportBand),
         ),
     );
-  }, [layout, preset, canvasFormat, viewportBand]);
+  }, [layout, paperSurface, canvasFormat, viewportBand]);
 
   const onDownload = useCallback(async () => {
     if (!layout) return;
@@ -781,6 +805,7 @@ export function AutoCollageGenerator() {
     showCollageLayers,
     canvasFormatId,
     generated,
+    paperSurfaceId,
   ]);
 
   const moodFitGentleWarning =
@@ -874,8 +899,8 @@ export function AutoCollageGenerator() {
           viewport={{ once: true, margin: "-80px" }}
           transition={enterTransSoft}
         >
-          Pick a visual temperament, a composition mode, and a canvas format — then shuffle until
-          the page feels like yours.
+          Pick a visual temperament, a paper surface, a composition mode, and a canvas format —
+          then shuffle until the page feels like yours.
         </motion.p>
 
         <motion.div
@@ -905,6 +930,7 @@ export function AutoCollageGenerator() {
                     aria-checked={selected}
                     onClick={() => {
                       setStyleId(id);
+                      setPaperSurfaceId(suggestedBackgroundIdsForStyle(id)[0]!);
                       setGenerated(false);
                       setError(null);
                     }}
@@ -923,6 +949,25 @@ export function AutoCollageGenerator() {
                   </button>
                 );
               })}
+            </div>
+          </fieldset>
+
+          <fieldset className="min-w-0 border-0 p-0">
+            <legend className="font-body text-sm italic text-ink-soft">
+              Paper surface
+            </legend>
+            <p className="font-body mt-2 max-w-2xl text-xs leading-relaxed text-ink-soft/90">
+              Choose the physical desk your collage sits on — scanned fibers, aging, and
+              multiply layers are baked into the board. Switching collage style picks a
+              matching paper first; tap any swatch to override. The empty canvas above previews
+              your surface before you generate.
+            </p>
+            <div className="mt-5">
+              <CollageBackgroundPicker
+                selectedId={paperSurfaceId}
+                suggestedIds={suggestedBackgroundIdsForStyle(styleId)}
+                onSelect={setPaperSurfaceId}
+              />
             </div>
           </fieldset>
 
@@ -1332,11 +1377,13 @@ export function AutoCollageGenerator() {
                   <div className="mt-2 rounded-[2px_4px_3px_2px] border border-ink/12 bg-gradient-to-br from-cream/90 to-paper-deep/50 p-3 shadow-[inset_0_1px_0_rgba(255,252,248,0.55)]">
                     <div
                       ref={moodPreviewShellRef}
-                      className="relative mx-auto aspect-[5/3] w-full max-w-md overflow-hidden rounded-[2px] bg-paper-deep/25"
+                      className="relative mx-auto aspect-[5/3] w-full max-w-md overflow-hidden rounded-[2px]"
+                      style={{ background: paperSurface.baseBackground }}
                     >
+                      <CollageBoardSurfaceLayers surface={paperSurface} />
                       <p
                         ref={moodPreviewTextRef}
-                        className="box-border h-full w-full px-2 text-ink"
+                        className="absolute inset-0 z-[6] box-border px-2 text-ink"
                         style={{
                           display: "flex",
                           flexDirection: "column",
@@ -1351,7 +1398,7 @@ export function AutoCollageGenerator() {
                             fontSizePx: previewMoodFontPx,
                           }),
                           color: preset.captionColor,
-                          textShadow: preset.captionTextShadow,
+                          textShadow: captionShadowResolved,
                         }}
                       >
                         {moodLine}
@@ -1435,13 +1482,39 @@ export function AutoCollageGenerator() {
             className="relative mx-auto overflow-hidden rounded-[4px_6px_5px_3px] border border-ink/10"
             style={{
               ...boardFrameStyle,
-              background: preset.boardBackground,
+              background: paperSurface.baseBackground,
               boxShadow: boardDropShadow,
             }}
             aria-label="Collage canvas"
           >
+            <CollageBoardSurfaceLayers surface={paperSurface} />
+
             {!showCollageLayers && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-paper/90 px-8 text-center">
+              <>
+                <div
+                  className="pointer-events-none absolute inset-0 z-[2]"
+                  style={{
+                    opacity: Math.min(0.55, (preset.linedTextureOpacity * paperSurface.linedOpacityMul) / 1.65),
+                    backgroundImage: `repeating-linear-gradient(${preset.linedAngleDeg}deg, transparent, transparent 4px, rgba(61,56,50,0.05) 4px, rgba(61,56,50,0.05) 5px)`,
+                    filter: linedPaperBlur,
+                  }}
+                  aria-hidden
+                />
+                <div
+                  className="pointer-events-none absolute inset-0 z-[3]"
+                  style={{
+                    opacity: Math.min(0.42, preset.grainSvgOpacity * paperSurface.grainOpacityMul * 0.85),
+                    mixBlendMode: "multiply",
+                    backgroundImage: GRAIN_DATA_URI,
+                    filter: grainOverlayBlur,
+                  }}
+                  aria-hidden
+                />
+              </>
+            )}
+
+            {!showCollageLayers && (
+              <div className="absolute inset-0 z-[8] flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-cream/82 via-cream/55 to-cream/35 px-8 text-center backdrop-blur-[0.5px]">
                 <p className="font-body max-w-sm text-sm italic leading-relaxed text-ink-soft">
                   Choose a style, add three to eight images, then generate — your
                   mood board will gather here.
@@ -1455,7 +1528,8 @@ export function AutoCollageGenerator() {
                 <div
                   className="pointer-events-none absolute inset-0"
                   style={{
-                    opacity: preset.linedTextureOpacity,
+                    opacity:
+                      preset.linedTextureOpacity * paperSurface.linedOpacityMul,
                     backgroundImage:
                       `repeating-linear-gradient(${preset.linedAngleDeg}deg, transparent, transparent 4px, rgba(61,56,50,0.05) 4px, rgba(61,56,50,0.05) 5px)`,
                     filter: linedPaperBlur,
@@ -1468,7 +1542,10 @@ export function AutoCollageGenerator() {
                   style={{
                     background: preset.atmosphereGradient,
                     mixBlendMode: preset.atmosphereBlendMode,
-                    opacity: atmosphereOpacity,
+                    opacity: Math.min(
+                      1,
+                      atmosphereOpacity * paperSurface.atmosphereOpacityMul,
+                    ),
                   }}
                   aria-hidden
                 />
@@ -1476,7 +1553,12 @@ export function AutoCollageGenerator() {
                 <div
                   className="pointer-events-none absolute inset-0"
                   style={{
-                    opacity: Math.min(0.92, preset.scannedPaperOpacity + 0.04),
+                    opacity: Math.min(
+                      0.92,
+                      preset.scannedPaperOpacity +
+                        0.04 +
+                        paperSurface.scannedOpacityAdd,
+                    ),
                     mixBlendMode: "multiply",
                     backgroundImage: `repeating-linear-gradient(${preset.scannedAngleDeg}deg, rgba(61,56,50,0.022) 0px, rgba(61,56,50,0.022) 1px, transparent 1px, transparent 5px), repeating-linear-gradient(90deg, rgba(255,252,248,0.028) 0px, transparent 2px, transparent 6px)`,
                     filter: scannedPaperBlur,
@@ -1489,7 +1571,9 @@ export function AutoCollageGenerator() {
                   style={{
                     background: preset.globalGradeGradient,
                     mixBlendMode: preset.globalGradeBlendMode,
-                    opacity: preset.globalGradeOpacity,
+                    opacity:
+                      preset.globalGradeOpacity *
+                      paperSurface.globalGradeOpacityMul,
                   }}
                   aria-hidden
                 />
@@ -1743,7 +1827,7 @@ export function AutoCollageGenerator() {
                           fontSizePx: collageMoodFontPx,
                         }),
                         color: preset.captionColor,
-                        textShadow: preset.captionTextShadow,
+                        textShadow: captionShadowResolved,
                       }}
                     >
                       {moodLine}
@@ -1756,7 +1840,8 @@ export function AutoCollageGenerator() {
                 <div
                   className="pointer-events-none absolute inset-0"
                   style={{
-                    opacity: preset.grainSvgOpacity,
+                    opacity:
+                      preset.grainSvgOpacity * paperSurface.grainOpacityMul,
                     mixBlendMode: "multiply",
                     backgroundImage: GRAIN_DATA_URI,
                     filter: grainOverlayBlur,
