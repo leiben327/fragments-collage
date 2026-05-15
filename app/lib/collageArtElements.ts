@@ -23,7 +23,8 @@ export type ArtElementKind =
   | "paint_wash"
   | "cut_color_paper"
   | "ink_sketch"
-  | "speech_bubble";
+  | "speech_bubble"
+  | "ticket_stub";
 
 export type ArtLayoutElement = {
   id: string;
@@ -150,16 +151,23 @@ function stylePool(styleId: CollageStyleId): ArtElementKind[] {
         "tape_masking",
         "paper_shadow",
       ];
-    case "museum-scrapbook":
+    case "tactile-memory":
       return [
         "tape_masking",
-        "clip",
-        "organic_shape",
-        "paper_shadow",
-        "pencil",
-        "scrap_book",
-        "pin",
+        "tape_masking",
         "tape_clear",
+        "scrap_book",
+        "note_handwritten",
+        "note_handwritten",
+        "paper_shadow",
+        "paper_shadow",
+        "tracing",
+        "pencil",
+        "scrap_newspaper",
+        "stitch_line",
+        "label",
+        "ink",
+        "ticket_stub",
       ];
     case "quiet-memory":
       return [
@@ -233,6 +241,8 @@ function elementSize(kind: ArtElementKind, rng: () => number): { w: number; h: n
       return { w: rand(rng, 12, 30), h: rand(rng, 12, 30) };
     case "speech_bubble":
       return { w: rand(rng, 14, 26), h: rand(rng, 10, 20) };
+    case "ticket_stub":
+      return { w: rand(rng, 18, 32), h: rand(rng, 5.5, 10) };
     default:
       return { w: rand(rng, 8, 18), h: rand(rng, 6, 14) };
   }
@@ -248,6 +258,7 @@ function pickZ(kind: ArtElementKind, layer: "back" | "front", rng: () => number)
   if (kind === "tape_masking" || kind === "tape_clear" || kind === "clip" || kind === "pin")
     return Math.floor(rand(rng, 62, 76));
   if (kind === "speech_bubble") return Math.floor(rand(rng, 34, 52));
+  if (kind === "ticket_stub") return Math.floor(rand(rng, 24, 42));
   if (kind === "ink_sketch") return Math.floor(rand(rng, 26, 44));
   if (kind === "stitch_line") return Math.floor(rand(rng, 42, 54));
   return Math.floor(rand(rng, 22, 41));
@@ -317,6 +328,7 @@ export function computeCollageArtElements(
   const rng = mulberry32(seed);
 
   const illustrated = styleId === "illustrated-collage";
+  const tactile = styleId === "tactile-memory";
 
   let count =
     density === "minimal"
@@ -327,11 +339,24 @@ export function computeCollageArtElements(
   if (illustrated) {
     count += Math.floor(rand(rng, 5, 10));
   }
-  if (liteDecor) count = Math.max(illustrated ? 6 : 4, Math.floor(count * (illustrated ? 0.62 : 0.55)));
-  if (manyPhotos) count = Math.max(illustrated ? 6 : 4, Math.floor(count * (illustrated ? 0.94 : 0.88)));
+  if (tactile) {
+    count += Math.floor(rand(rng, 3, 6));
+  }
+  if (liteDecor)
+    count = Math.max(
+      illustrated ? 6 : tactile ? 6 : 4,
+      Math.floor(count * (illustrated ? 0.62 : tactile ? 0.58 : 0.55)),
+    );
+  if (manyPhotos)
+    count = Math.max(
+      illustrated ? 6 : tactile ? 6 : 4,
+      Math.floor(count * (illustrated ? 0.94 : tactile ? 0.92 : 0.88)),
+    );
 
   const focal = pieces[focalIndex];
-  const avoidFocal = focal ? inflate(pieceRect(focal), illustrated ? 4 : 9) : null;
+  const avoidFocal = focal
+    ? inflate(pieceRect(focal), illustrated ? 4 : tactile ? 5 : 9)
+    : null;
   const avoidSecondary = pieces
     .map((p, i) => (i !== focalIndex && p.tier !== 2 ? inflate(pieceRect(p), 5) : null))
     .filter((r): r is Rect => r !== null);
@@ -347,6 +372,7 @@ export function computeCollageArtElements(
       kind === "cut_color_paper" ||
       kind === "paper_shadow" ||
       kind === "tracing" ||
+      (kind === "ticket_stub" && rng() < 0.42) ||
       (kind === "scrap_book" && rng() < 0.45) ||
       (kind === "scrap_newspaper" && rng() < 0.5)
         ? "back"
@@ -360,6 +386,7 @@ export function computeCollageArtElements(
       kind === "tape_masking" ||
       kind === "tape_clear" ||
       kind === "clip" ||
+      (kind === "ticket_stub" && rng() < 0.5) ||
       (kind === "pin" && rng() < 0.55);
 
     let leftPct = 50;
@@ -394,7 +421,8 @@ export function computeCollageArtElements(
           if (avoidSecondary.some((r) => intersects(box, r))) continue;
         } else if (!tapeLike) {
           if (
-            rng() < (illustrated ? 0.2 : 0.35) &&
+            rng() <
+              (illustrated ? 0.2 : tactile ? 0.28 : 0.35) &&
             avoidFocal &&
             intersects(box, inflate(avoidFocal, -3))
           )
@@ -435,7 +463,8 @@ export function computeCollageArtElements(
             ? "soft-light"
             : kind === "ink" ||
                 kind === "scrap_newspaper" ||
-                kind === "cut_color_paper"
+                kind === "cut_color_paper" ||
+                kind === "ticket_stub"
               ? "multiply"
               : undefined,
     });

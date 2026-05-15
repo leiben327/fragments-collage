@@ -546,8 +546,13 @@ export function suggestedBackgroundIdsForStyle(
       return ["craft-paper", "watercolor-wash", "fabric-linen", "soft-cream-archive"];
     case "emotional-poster":
       return ["botanical-paper", "watercolor-wash", "soft-cream-archive", "tracing-paper"];
-    case "museum-scrapbook":
-      return ["craft-paper", "grid-paper", "soft-cream-archive", "film-grain-paper"];
+    case "tactile-memory":
+      return [
+        "tracing-paper",
+        "old-book-pages",
+        "soft-cream-archive",
+        "fabric-linen",
+      ];
     case "illustrated-collage":
       return ["watercolor-wash", "botanical-paper", "tracing-paper", "craft-paper"];
     case "quiet-memory":

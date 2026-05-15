@@ -129,28 +129,29 @@ function artPalette(styleId: CollageStyleId): ArtPalette {
         organic: "rgba(88,120,92,0.18)",
         organicDeep: "rgba(62,88,68,0.14)",
       };
-    case "museum-scrapbook":
+    case "tactile-memory":
       return {
-        newsA: "rgba(58,54,50,0.12)",
-        newsB: "rgba(42,40,38,0.08)",
-        bookA: "#e2d8c8",
-        bookB: "#c4b8a4",
-        tapeMask: "linear-gradient(180deg, rgba(242,236,226,0.92), rgba(214,206,192,0.75))",
+        newsA: "rgba(68,62,54,0.1)",
+        newsB: "rgba(52,48,44,0.07)",
+        bookA: "#ebe4dc",
+        bookB: "#cec4b6",
+        tapeMask:
+          "linear-gradient(182deg, rgba(250,246,238,0.94) 0%, rgba(220,212,198,0.78) 100%)",
         tapeClear:
-          "linear-gradient(115deg, rgba(255,252,248,0.5), rgba(255,255,255,0.12), rgba(232,226,216,0.42))",
-        ink: "rgba(42,40,38,0.38)",
-        stitch: "rgba(62,58,54,0.35)",
-        botanical: "rgba(78,74,66,0.2)",
-        tracing: "rgba(255,252,246,0.32)",
-        labelLine: "rgba(58,54,50,0.26)",
-        pencil: "rgba(64,60,56,0.32)",
-        fabricA: "rgba(96,88,78,0.12)",
-        fabricB: "rgba(72,66,60,0.09)",
-        noteLine: "rgba(72,82,96,0.16)",
-        notePaper: "rgba(250,246,238,0.9)",
-        metal: "rgba(112,106,98,0.5)",
-        organic: "rgba(88,82,74,0.14)",
-        organicDeep: "rgba(62,58,54,0.12)",
+          "linear-gradient(118deg, rgba(255,252,246,0.52), rgba(255,255,255,0.1), rgba(232,226,216,0.44))",
+        ink: "rgba(48,44,40,0.34)",
+        stitch: "rgba(72,66,58,0.32)",
+        botanical: "rgba(82,76,68,0.14)",
+        tracing: "rgba(255,252,246,0.36)",
+        labelLine: "rgba(82,74,68,0.22)",
+        pencil: "rgba(72,68,62,0.3)",
+        fabricA: "rgba(112,104,94,0.1)",
+        fabricB: "rgba(88,80,74,0.08)",
+        noteLine: "rgba(92,94,104,0.14)",
+        notePaper: "rgba(252,248,242,0.88)",
+        metal: "rgba(108,102,94,0.45)",
+        organic: "rgba(96,88,78,0.12)",
+        organicDeep: "rgba(72,66,58,0.1)",
       };
     case "quiet-memory":
       return {
@@ -593,6 +594,53 @@ function CollageArtElementView({
               />
             </svg>
           )}
+        </div>
+      );
+    }
+    case "ticket_stub": {
+      const paper = pal.notePaper;
+      const edge = pal.ink;
+      const faint = pal.labelLine;
+      const perfY = 6 + (v % 4);
+      const gradId = `tkg-${el.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+      return (
+        <div
+          key={el.id}
+          className="overflow-hidden rounded-[2px]"
+          style={{
+            ...base,
+            boxShadow: "1px 2px 6px rgba(42,38,34,0.12)",
+            mixBlendMode: (el.mixBlendMode as CSSProperties["mixBlendMode"]) ?? "multiply",
+          }}
+          aria-hidden
+        >
+          <svg className="h-full w-full" viewBox="0 0 100 32" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor={pal.bookA} stopOpacity="0.95" />
+                <stop offset="100%" stopColor={pal.bookB} stopOpacity="0.82" />
+              </linearGradient>
+            </defs>
+            <rect x="0.5" y="0.5" width="99" height="31" rx="1.5" fill={paper} stroke={edge} strokeWidth="0.75" opacity="0.94" />
+            <rect x="1" y="1" width="98" height="30" rx="1" fill={`url(#${gradId})`} opacity="0.35" />
+            {Array.from({ length: 7 }, (_, i) => (
+              <line
+                key={i}
+                x1={8 + i * 2.8}
+                y1={perfY}
+                x2={8 + i * 2.8 + 1.1}
+                y2={perfY}
+                stroke={edge}
+                strokeWidth="0.65"
+                strokeLinecap="round"
+                opacity="0.65"
+              />
+            ))}
+            <line x1="14" y1="14" x2="86" y2="14" stroke={faint} strokeWidth="0.55" strokeDasharray="2 3" opacity="0.72" />
+            <line x1="14" y1="21" x2={58 + (v % 22)} y2="21" stroke={faint} strokeWidth="0.5" opacity="0.55" />
+            <circle cx="24" cy="24" r="0.9" fill={edge} opacity="0.4" />
+            <circle cx="32" cy="24.5" r="0.7" fill={edge} opacity="0.32" />
+          </svg>
         </div>
       );
     }
