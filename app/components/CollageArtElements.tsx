@@ -210,6 +210,40 @@ function artPalette(styleId: CollageStyleId): ArtPalette {
         bubbleStroke: "rgba(38,42,72,0.45)",
         bubbleFill: "rgba(255,252,250,0.55)",
       };
+    case "riso-dream":
+      return {
+        newsA: "rgba(255,60,140,0.18)",
+        newsB: "rgba(0,188,210,0.16)",
+        bookA: "#f0e8f2",
+        bookB: "#bcd8e8",
+        tapeMask:
+          "linear-gradient(90deg, rgba(255,248,236,0.75) 0%, rgba(0,210,218,0.4) 50%, rgba(255,88,160,0.35) 100%)",
+        tapeClear:
+          "linear-gradient(118deg, rgba(255,252,248,0.5), rgba(0,200,220,0.15), rgba(255,60,130,0.12))",
+        ink: "rgba(12,52,108,0.45)",
+        stitch: "rgba(255,70,150,0.35)",
+        botanical: "rgba(0,175,195,0.22)",
+        tracing: "rgba(255,248,240,0.45)",
+        labelLine: "rgba(255,255,252,0.55)",
+        pencil: "rgba(18,70,118,0.42)",
+        fabricA: "rgba(255,120,170,0.14)",
+        fabricB: "rgba(0,180,200,0.12)",
+        noteLine: "rgba(255,90,152,0.28)",
+        notePaper: "rgba(255,250,246,0.88)",
+        metal: "rgba(14,54,118,0.38)",
+        organic: "rgba(255,100,162,0.22)",
+        organicDeep: "rgba(24,108,148,0.32)",
+        washA: "rgba(255,85,172,0.38)",
+        washB: "rgba(72,226,238,0.35)",
+        washC: "rgba(255,175,118,0.28)",
+        cutPaperA:
+          "linear-gradient(132deg, rgba(255,60,148,0.78) 0%, rgba(255,215,248,0.42) 100%)",
+        cutPaperB:
+          "linear-gradient(158deg, rgba(0,210,222,0.62) 0%, rgba(16,48,108,0.48) 100%)",
+        sketchInk: "rgba(10,48,98,0.55)",
+        bubbleStroke: "rgba(255,56,140,0.38)",
+        bubbleFill: "rgba(255,252,248,0.45)",
+      };
     default:
       return {
         newsA: "rgba(58,68,82,0.12)",

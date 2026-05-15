@@ -3,7 +3,7 @@
  * Each call yields a unique clip-path — no shared SVG wave templates.
  */
 
-export type TearEdgeProfile = "archive" | "xerox" | "painted";
+export type TearEdgeProfile = "archive" | "xerox" | "painted" | "riso";
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -19,24 +19,31 @@ export function buildHandTornClipPath(
   profile: TearEdgeProfile,
 ): string {
   const painted = profile === "painted";
-  const archive = profile === "archive" || painted;
+  const risograph = profile === "riso";
+  const archive = profile === "archive" || painted || risograph;
   const perpWild = painted
     ? rand(rng, 7.5, 14)
-    : archive
-      ? rand(rng, 5.5, 11)
-      : rand(rng, 2.8, 5.5);
+    : risograph
+      ? rand(rng, 5, 9.5)
+      : archive
+        ? rand(rng, 5.5, 11)
+        : rand(rng, 2.8, 5.5);
   const perpBias = painted
     ? rand(rng, 1.8, 4.2)
-    : archive
-      ? rand(rng, 1.2, 3.8)
-      : rand(rng, 0.5, 2.1);
+    : risograph
+      ? rand(rng, 1, 2.8)
+      : archive
+        ? rand(rng, 1.2, 3.8)
+        : rand(rng, 0.5, 2.1);
   const tangJ = painted
     ? rand(rng, 2, 4.2)
-    : archive
-      ? rand(rng, 1.4, 3.6)
-      : rand(rng, 0.6, 1.8);
-  const fiberChance = painted ? 0.32 : archive ? 0.26 : 0.14;
-  const hairChance = painted ? 0.14 : archive ? 0.12 : 0.06;
+    : risograph
+      ? rand(rng, 1.2, 2.8)
+      : archive
+        ? rand(rng, 1.4, 3.6)
+        : rand(rng, 0.6, 1.8);
+  const fiberChance = painted ? 0.32 : risograph ? 0.1 : archive ? 0.26 : 0.14;
+  const hairChance = painted ? 0.14 : risograph ? 0.05 : archive ? 0.12 : 0.06;
 
   const pts: Array<[number, number]> = [];
 
@@ -61,12 +68,12 @@ export function buildHandTornClipPath(
   ) {
     const segs = clamp(
       Math.floor(
-        7 +
-          rng() * 11 +
-          (archive ? rng() * (painted ? 7 : 5) : rng() * 2),
+        (risograph ? 11 : painted ? 7 : 7) +
+          rng() * (risograph ? 10 : painted ? 11 : 11) +
+          ((archive ? rng() * (painted ? 7 : risograph ? 3 : 5) : rng() * 2)),
       ),
-      painted ? 8 : 6,
-      painted ? 26 : 22,
+      risograph ? 10 : painted ? 8 : 6,
+      risograph ? 20 : painted ? 26 : 22,
     );
     const dx = x1 - x0;
     const dy = y1 - y0;
@@ -128,6 +135,17 @@ export function buildEdgeNoiseParams(rng: () => number, profile: TearEdgeProfile
       curlCorner: Math.floor(rng() * 4) as 0 | 1 | 2 | 3,
       edgeVignetteOpacity: rand(rng, 0.12, 0.26),
       wrinkleOpacity: rand(rng, 0.05, 0.12),
+    };
+  }
+  if (profile === "riso") {
+    return {
+      edgeDisplacementSeed: 1 + Math.floor(rng() * 998),
+      edgeDisplacementScale: rand(rng, 0.55, 1.65),
+      edgeNoiseBaseFrequency: rand(rng, 0.022, 0.045),
+      edgeNoiseOctaves: 2,
+      curlCorner: rng() < 0.72 ? 0 : (Math.floor(rng() * 4) as 0 | 1 | 2 | 3),
+      edgeVignetteOpacity: rand(rng, 0.18, 0.34),
+      wrinkleOpacity: rand(rng, 0.03, 0.08),
     };
   }
   return {

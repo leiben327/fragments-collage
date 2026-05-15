@@ -555,6 +555,13 @@ export function suggestedBackgroundIdsForStyle(
       ];
     case "illustrated-collage":
       return ["watercolor-wash", "botanical-paper", "tracing-paper", "craft-paper"];
+    case "riso-dream":
+      return [
+        "photocopy-texture",
+        "grid-paper",
+        "film-grain-paper",
+        "tracing-paper",
+      ];
     case "quiet-memory":
     default:
       return ["blueprint-paper", "tracing-paper", "film-grain-paper", "soft-cream-archive"];

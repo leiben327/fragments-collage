@@ -1,6 +1,10 @@
 "use client";
 
-import { computeCollageLayout, scrapMaterialShadow } from "@/app/lib/collageLayout";
+import {
+  computeCollageLayout,
+  scrapMaterialShadow,
+  scrapMaterialShadowRiso,
+} from "@/app/lib/collageLayout";
 import {
   COMPOSITION_MODE_IDS,
   DEFAULT_COMPOSITION_MODE,
@@ -23,6 +27,10 @@ import {
   resolveCaptionTextShadow,
   suggestedBackgroundIdsForStyle,
 } from "@/app/lib/collageBackgroundSurfaces";
+import {
+  risoTreatmentFilters,
+  risoTreatmentInkOverlay,
+} from "@/app/lib/collageRisoTreatments";
 import {
   CANVAS_FORMATS,
   DEFAULT_CANVAS_FORMAT_ID,
@@ -657,10 +665,12 @@ export function AutoCollageGenerator() {
   const canGenerate = slots.length >= 3 && slots.length <= 8;
   const showCollageLayers = Boolean(generated && layout);
   const isZine = styleId === "vintage-zine";
+  const isRisoDream = styleId === "riso-dream";
   /** Softer ink / vignette / wrinkle on small screens and when many photos stay legible. */
   const photoReadabilityMul =
     (viewportBand === "compact" ? 0.62 : viewportBand === "cozy" ? 0.78 : 1) *
-    (slots.length >= 6 ? 0.88 : 1);
+    (slots.length >= 6 ? 0.88 : 1) *
+    (isRisoDream ? 1.08 : 1);
 
   const collageMoodFontPx = moodAutoFit
     ? (moodFitCollagePx ?? moodFontSizePx)
@@ -1486,6 +1496,26 @@ export function AutoCollageGenerator() {
                   aria-hidden
                 />
 
+                {isRisoDream && (
+                  <div
+                    className="pointer-events-none absolute inset-0"
+                    style={{
+                      opacity:
+                        viewportBand === "full"
+                          ? 0.12
+                          : viewportBand === "cozy"
+                            ? 0.095
+                            : 0.08,
+                      mixBlendMode: "multiply",
+                      backgroundImage:
+                        "radial-gradient(circle at 50% 50%, rgba(18,54,118,0.4) 0.7px, transparent 0.74px)",
+                      backgroundSize: "5px 5px",
+                      backgroundPosition: `${(salt % 5) + 1}px ${((salt >>> 4) % 5) + 1}px`,
+                    }}
+                    aria-hidden
+                  />
+                )}
+
                 <div
                   className={`absolute inset-[1.8%] overflow-hidden rounded-[2px_3px_2px_2px] ${innerPaperShellClass}`}
                 >
@@ -1557,8 +1587,12 @@ export function AutoCollageGenerator() {
                       background: s.bg,
                       boxShadow:
                         viewportBand === "full"
-                          ? scrapMaterialShadow(s.zIndex)
-                          : "1px 6px 14px rgba(45,40,35,0.14), 0 0 0 1px rgba(62,56,48,0.04)",
+                          ? isRisoDream
+                            ? scrapMaterialShadowRiso(s.zIndex)
+                            : scrapMaterialShadow(s.zIndex)
+                          : isRisoDream
+                            ? "0 2px 8px rgba(38,72,128,0.1), 0 0 0 1px rgba(255,252,248,0.06)"
+                            : "1px 6px 14px rgba(45,40,35,0.14), 0 0 0 1px rgba(62,56,48,0.04)",
                     }}
                     aria-hidden
                   />
@@ -1574,6 +1608,9 @@ export function AutoCollageGenerator() {
                   const url = slots[slotIdx]?.url;
                   if (!url) return null;
                   const imgFilter = [preset.unifiedImageFilter];
+                  if (isRisoDream && p.risoInkTreatment) {
+                    imgFilter.push(risoTreatmentFilters(p.risoInkTreatment));
+                  }
                   if (p.imageBlurPx > 0)
                     imgFilter.push(`blur(${p.imageBlurPx.toFixed(2)}px)`);
                   const isFocal = i === layout.focalIndex;
@@ -1582,9 +1619,13 @@ export function AutoCollageGenerator() {
                     WebkitClipPath: p.clipPathCss,
                   };
                   const edgeFilterRef = `url(#collage-edge-${edgeFilterUid}-${salt}-${i})`;
-                  const paperInset = isFocal
-                    ? "inset 0 0 36px rgba(38,32,28,0.24), inset 0 0 14px rgba(255,252,248,0.1), inset 0 0 2px rgba(255,252,248,0.15)"
-                    : "inset 0 0 28px rgba(42,38,34,0.2), inset 0 0 10px rgba(255,252,248,0.07)";
+                  const paperInset = isRisoDream
+                    ? isFocal
+                      ? "inset 0 0 30px rgba(12,48,98,0.2), inset 0 0 12px rgba(255,252,248,0.12)"
+                      : "inset 0 0 24px rgba(16,58,108,0.18), inset 0 0 8px rgba(255,252,248,0.08)"
+                    : isFocal
+                      ? "inset 0 0 36px rgba(38,32,28,0.24), inset 0 0 14px rgba(255,252,248,0.1), inset 0 0 2px rgba(255,252,248,0.15)"
+                      : "inset 0 0 28px rgba(42,38,34,0.2), inset 0 0 10px rgba(255,252,248,0.07)";
                   const paperDepth = isFocal
                     ? `${paperInset}, 0 0 0 1px rgba(255,252,248,0.24)`
                     : paperInset;
@@ -1638,20 +1679,28 @@ export function AutoCollageGenerator() {
                             transform: `translate(-50%, -50%) rotate(${p.behindRotate}deg)`,
                             background: preset.behindGradient,
                             boxShadow:
-                              viewportBand === "full"
-                                ? isFocal
-                                  ? "7px 26px 42px rgba(42,36,32,0.24), 4px 14px 26px rgba(55,48,42,0.16), 1px 3px 8px rgba(55,50,45,0.1)"
-                                  : "5px 20px 34px rgba(58,52,46,0.18), 3px 10px 20px rgba(58,52,46,0.12)"
-                                : isFocal
-                                  ? "4px 14px 26px rgba(61,56,50,0.16)"
-                                  : "2px 10px 18px rgba(61,56,50,0.12)",
+                              isRisoDream
+                                ? viewportBand === "full"
+                                  ? isFocal
+                                    ? "3px 14px 26px rgba(28,72,148,0.18), 1px 2px 0 rgba(255,70,150,0.1)"
+                                    : "2px 10px 20px rgba(38,88,148,0.14)"
+                                  : isFocal
+                                    ? "2px 10px 18px rgba(38,88,148,0.14)"
+                                    : "1px 6px 14px rgba(48,98,158,0.11)"
+                                : viewportBand === "full"
+                                  ? isFocal
+                                    ? "7px 26px 42px rgba(42,36,32,0.24), 4px 14px 26px rgba(55,48,42,0.16), 1px 3px 8px rgba(55,50,45,0.1)"
+                                    : "5px 20px 34px rgba(58,52,46,0.18), 3px 10px 20px rgba(58,52,46,0.12)"
+                                  : isFocal
+                                    ? "4px 14px 26px rgba(61,56,50,0.16)"
+                                    : "2px 10px 18px rgba(61,56,50,0.12)",
                           }}
                           aria-hidden
                         />
                         <div
                           data-collage-export-strip-filter
                           className={`relative z-10 flex h-full w-full overflow-hidden bg-paper-deep/15 ${
-                            isZine ? preset.frameClasses : "ring-1 ring-white/30"
+                            isZine || isRisoDream ? preset.frameClasses : "ring-1 ring-white/30"
                           }`}
                           style={{
                             ...clipPaper,
@@ -1678,11 +1727,15 @@ export function AutoCollageGenerator() {
                           <div
                             className="pointer-events-none absolute inset-0 z-[9]"
                             style={{
-                              background: `radial-gradient(ellipse 78% 74% at 46% 44%, transparent 30%, rgba(32,28,24,${0.42 + p.edgeVignetteOpacity * 0.35}) 100%)`,
+                              background: isRisoDream
+                                ? `radial-gradient(ellipse 78% 74% at 46% 44%, transparent 32%, rgba(18,58,122,${0.28 + p.edgeVignetteOpacity * 0.28}) 100%)`
+                                : `radial-gradient(ellipse 78% 74% at 46% 44%, transparent 30%, rgba(32,28,24,${0.42 + p.edgeVignetteOpacity * 0.35}) 100%)`,
                               mixBlendMode: "multiply",
                               opacity: Math.min(
-                                0.58,
-                                (p.edgeVignetteOpacity + 0.08) * photoReadabilityMul,
+                                isRisoDream ? 0.44 : 0.58,
+                                (p.edgeVignetteOpacity +
+                                  (isRisoDream ? 0.04 : 0.08)) *
+                                  photoReadabilityMul,
                               ),
                             }}
                             aria-hidden
@@ -1690,7 +1743,10 @@ export function AutoCollageGenerator() {
                           <div
                             className="pointer-events-none absolute inset-0 z-[10]"
                             style={{
-                              opacity: p.wrinkleOpacity * photoReadabilityMul,
+                              opacity:
+                                p.wrinkleOpacity *
+                                photoReadabilityMul *
+                                (isRisoDream ? 0.52 : 1),
                               mixBlendMode: "multiply",
                               backgroundImage: WRINKLE_DATA_URI,
                               backgroundSize: "200px 200px",
@@ -1707,9 +1763,24 @@ export function AutoCollageGenerator() {
                             }}
                             aria-hidden
                           />
+                          {isRisoDream && p.risoInkTreatment ? (
+                            <div
+                              className="pointer-events-none absolute inset-0 z-[12]"
+                              style={{
+                                background: risoTreatmentInkOverlay(p.risoInkTreatment),
+                                mixBlendMode: "multiply",
+                                opacity: 0.42 * photoReadabilityMul,
+                              }}
+                              aria-hidden
+                            />
+                          ) : null}
                           <div
-                            className="pointer-events-none z-[12]"
-                            style={paperCurlOverlay(p.curlCorner)}
+                            className="pointer-events-none z-[13]"
+                            style={
+                              isRisoDream
+                                ? { display: "none" }
+                                : paperCurlOverlay(p.curlCorner)
+                            }
                             aria-hidden
                           />
                         </div>

@@ -198,6 +198,22 @@ function stylePool(styleId: CollageStyleId): ArtElementKind[] {
         "tape_masking",
         "speech_bubble",
       ];
+    case "riso-dream":
+      return [
+        "paint_wash",
+        "paint_wash",
+        "cut_color_paper",
+        "cut_color_paper",
+        "organic_shape",
+        "tracing",
+        "ink_sketch",
+        "ink_sketch",
+        "pencil",
+        "stitch_line",
+        "paper_shadow",
+        "ink",
+        "label",
+      ];
     default:
       return [
         "tracing",
@@ -329,6 +345,7 @@ export function computeCollageArtElements(
 
   const illustrated = styleId === "illustrated-collage";
   const tactile = styleId === "tactile-memory";
+  const riso = styleId === "riso-dream";
 
   let count =
     density === "minimal"
@@ -342,20 +359,29 @@ export function computeCollageArtElements(
   if (tactile) {
     count += Math.floor(rand(rng, 3, 6));
   }
+  if (riso) {
+    count += Math.floor(rand(rng, 4, 9));
+  }
   if (liteDecor)
     count = Math.max(
-      illustrated ? 6 : tactile ? 6 : 4,
-      Math.floor(count * (illustrated ? 0.62 : tactile ? 0.58 : 0.55)),
+      illustrated ? 6 : tactile ? 6 : riso ? 5 : 4,
+      Math.floor(
+        count *
+          (illustrated ? 0.62 : tactile ? 0.58 : riso ? 0.55 : 0.55),
+      ),
     );
   if (manyPhotos)
     count = Math.max(
-      illustrated ? 6 : tactile ? 6 : 4,
-      Math.floor(count * (illustrated ? 0.94 : tactile ? 0.92 : 0.88)),
+      illustrated ? 6 : tactile ? 6 : riso ? 5 : 4,
+      Math.floor(
+        count *
+          (illustrated ? 0.94 : tactile ? 0.92 : riso ? 0.72 : 0.88),
+      ),
     );
 
   const focal = pieces[focalIndex];
   const avoidFocal = focal
-    ? inflate(pieceRect(focal), illustrated ? 4 : tactile ? 5 : 9)
+    ? inflate(pieceRect(focal), illustrated ? 4 : tactile ? 5 : riso ? 11 : 9)
     : null;
   const avoidSecondary = pieces
     .map((p, i) => (i !== focalIndex && p.tier !== 2 ? inflate(pieceRect(p), 5) : null))
@@ -422,7 +448,7 @@ export function computeCollageArtElements(
         } else if (!tapeLike) {
           if (
             rng() <
-              (illustrated ? 0.2 : tactile ? 0.28 : 0.35) &&
+              (illustrated ? 0.2 : tactile ? 0.28 : riso ? 0.52 : 0.35) &&
             avoidFocal &&
             intersects(box, inflate(avoidFocal, -3))
           )
@@ -438,9 +464,14 @@ export function computeCollageArtElements(
     const opacity = clamp(
       (layer === "back" ? 0.22 : 0.38) +
         rng() * (layer === "back" ? 0.2 : 0.28) +
-        (kind === "paint_wash" && illustrated ? 0.12 : 0),
+        (kind === "paint_wash" && illustrated ? 0.12 : 0) +
+        (kind === "paint_wash" && riso ? 0.08 : 0),
       0.12,
-      illustrated && kind === "paint_wash" ? 0.82 : 0.78,
+      illustrated && kind === "paint_wash"
+        ? 0.82
+        : kind === "paint_wash" && riso
+          ? 0.66
+          : 0.78,
     );
     const rotate = rand(rng, -38, 38);
     const variant = Math.floor(rng() * 1000);
@@ -458,7 +489,9 @@ export function computeCollageArtElements(
       variant,
       mixBlendMode:
         kind === "paint_wash"
-          ? "soft-light"
+          ? riso
+            ? "multiply"
+            : "soft-light"
           : kind === "tracing" || kind === "tape_clear"
             ? "soft-light"
             : kind === "ink" ||

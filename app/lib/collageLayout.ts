@@ -2,6 +2,10 @@ import type { CompositionModeId } from "./collageCompositionModes";
 import type { CanvasCompositionKind } from "./collageCanvasFormats";
 import type { LayoutProfile, StyleLayoutHints } from "./collageStylePresets";
 import {
+  RISO_INK_TREATMENT_IDS,
+  type RisoInkTreatmentId,
+} from "./collageRisoTreatments";
+import {
   buildPiecePaperEdge,
   type TearEdgeProfile,
 } from "./collageTornEdges";
@@ -31,6 +35,8 @@ export type PieceLayout = {
   curlCorner: 0 | 1 | 2 | 3;
   edgeVignetteOpacity: number;
   wrinkleOpacity: number;
+  /** Riso Dream — per-print ink / contrast path */
+  risoInkTreatment?: RisoInkTreatmentId;
 };
 
 export type TapeLayout = {
@@ -135,6 +141,20 @@ const SHADOW_TERTIARY = [
   "1px 4px 12px rgba(58,54,48,0.12), 6px 16px 28px rgba(48,44,38,0.14)",
 ];
 
+/** Riso / flat print depth — overlap & color carry depth, not paper loft */
+const SHADOW_RISO_FOCAL = [
+  "0 1px 3px rgba(26,58,118,0.22), 1px 2px 0 rgba(255,60,152,0.08)",
+  "0 0 0 1px rgba(255,255,255,0.12), 2px 10px 20px rgba(28,52,122,0.14)",
+];
+const SHADOW_RISO_SECONDARY = [
+  "0 1px 2px rgba(42,92,148,0.14), 1px 1px 0 rgba(255,200,105,0.06)",
+  "1px 8px 16px rgba(38,72,138,0.11)",
+];
+const SHADOW_RISO_TERTIARY = [
+  "0 1px 1px rgba(48,108,172,0.08)",
+  "1px 5px 12px rgba(72,112,172,0.06)",
+];
+
 /** Scrunched paper scraps: contact shadow scales with stacking height */
 export const SCRAP_SHADOW_DEPTH_LOW =
   "1px 3px 7px rgba(44,38,34,0.11), 0 0 0 1px rgba(62,56,48,0.04)";
@@ -147,6 +167,14 @@ export function scrapMaterialShadow(zIndex: number): string {
   if (zIndex < 20) return SCRAP_SHADOW_DEPTH_LOW;
   if (zIndex < 56) return SCRAP_SHADOW_DEPTH_MID;
   return SCRAP_SHADOW_DEPTH_HIGH;
+}
+
+/** Flat ink-block scraps — no deep paper lift */
+export function scrapMaterialShadowRiso(zIndex: number): string {
+  if (zIndex < 20) {
+    return "1px 3px 8px rgba(28,72,132,0.07), 0 0 0 1px rgba(255,255,252,0.05)";
+  }
+  return "1px 5px 12px rgba(38,58,122,0.09), 0 1px 0 rgba(255,90,160,0.06)";
 }
 
 /** Prefer a photo corner — tape crosses the stack like real masking tape */
@@ -266,12 +294,25 @@ function finalizePiecePositions(
   pieces: PieceLayout[],
   focal: number,
   rng: () => number,
+  opts?: { skipOverlapBias?: boolean },
 ) {
-  biasPiecesTowardFocalOverlap(pieces, focal, rng);
+  if (!opts?.skipOverlapBias) {
+    biasPiecesTowardFocalOverlap(pieces, focal, rng);
+  }
   containAllPhotosOnPaper(pieces, rng);
 }
 
-function pickLayerShadowForTier(tier: PieceTier, rng: () => number) {
+function pickLayerShadowForTier(
+  hints: StyleLayoutHints,
+  tier: PieceTier,
+  rng: () => number,
+): string {
+  const flat = hints.layoutProfile === "riso-graphic";
+  if (flat) {
+    const pool =
+      tier === 0 ? SHADOW_RISO_FOCAL : tier === 1 ? SHADOW_RISO_SECONDARY : SHADOW_RISO_TERTIARY;
+    return pool[Math.floor(rng() * pool.length)] ?? pool[0];
+  }
   if (tier === 0) {
     return SHADOW_FOCAL[Math.floor(rng() * SHADOW_FOCAL.length)] ?? SHADOW_FOCAL[0];
   }
@@ -297,11 +338,13 @@ function basePieceFields(
   "xPct" | "yPct" | "widthPct" | "heightPct" | "rotate" | "zIndex" | "tier"
 > {
   const profile: TearEdgeProfile =
-    hints.tearEdgeIntensity === "xerox"
-      ? "xerox"
-      : hints.tearEdgeIntensity === "painted"
-        ? "painted"
-        : "archive";
+    hints.tearEdgeIntensity === "riso"
+      ? "riso"
+      : hints.tearEdgeIntensity === "xerox"
+        ? "xerox"
+        : hints.tearEdgeIntensity === "painted"
+          ? "painted"
+          : "archive";
   const paper = buildPiecePaperEdge(rng, profile);
   const opacity =
     tier === 0
@@ -322,7 +365,7 @@ function basePieceFields(
           ? 0
           : 0.015 + rng() * 0.07,
     floatYOffsetPx: 0,
-    layerShadow: pickLayerShadowForTier(tier, rng),
+    layerShadow: pickLayerShadowForTier(hints, tier, rng),
     ...paper,
   };
 }
@@ -372,11 +415,12 @@ function assignOrganicZ(
   layoutProfile?: LayoutProfile,
 ) {
   const illustrated = layoutProfile === "illustrated-surreal";
+  const riso = layoutProfile === "riso-graphic";
   const many = pieces.length >= 6;
   const others = pieces.map((_, i) => i).filter((i) => i !== focalIndex);
   shuffleInPlace(others, rng);
-  const low = illustrated ? 18 : 20;
-  const high = illustrated ? 48 : 44;
+  const low = illustrated ? 18 : riso ? 24 : 20;
+  const high = illustrated ? 48 : riso ? 40 : 44;
   const zs = others.map(() => low + Math.floor(rng() * (high - low)));
   zs.sort((a, b) => a - b);
   others.forEach((idx, rank) => {
@@ -390,18 +434,52 @@ function assignOrganicZ(
   /** With many photos, keep focal lift gentler so fewer prints sit fully underneath. */
   const focalLift = illustrated
     ? 2 + Math.floor(rng() * 3)
-    : many
-      ? 2 + Math.floor(rng() * 4)
-      : 4 + Math.floor(rng() * 6);
+    : riso
+      ? 3 + Math.floor(rng() * 3)
+      : many
+        ? 2 + Math.floor(rng() * 4)
+        : 4 + Math.floor(rng() * 6);
   pieces[focalIndex].zIndex = maxOther + focalLift;
 
-  if (others.length > 0 && rng() < (illustrated ? 0.18 : many ? 0.12 : 0.28)) {
+  const accentChance = illustrated ? 0.18 : riso ? 0.08 : many ? 0.12 : 0.28;
+  if (others.length > 0 && rng() < accentChance) {
     const accent = others[Math.floor(rng() * others.length)]!;
     if (rng() < 0.55) {
       pieces[accent].zIndex = pieces[focalIndex].zIndex + 1 + Math.floor(rng() * 5);
     } else {
       pieces[focalIndex].zIndex = maxOther - 1 + Math.floor(rng() * 5);
       pieces[accent].zIndex = maxOther + 6 + Math.floor(rng() * 8);
+    }
+  }
+}
+
+function assignRisoInkTreatments(
+  pieces: PieceLayout[],
+  focalIdx: number,
+  rng: () => number,
+) {
+  const pool = [...RISO_INK_TREATMENT_IDS];
+  shuffleInPlace(pool, rng);
+  const vivid: RisoInkTreatmentId[] = [
+    "magenta_flare",
+    "cyan_veil",
+    "ember_burst",
+    "cutout_ink",
+  ];
+  const fp = pieces[focalIdx];
+  if (fp) {
+    fp.risoInkTreatment =
+      rng() < 0.62
+        ? vivid[Math.floor(rng() * vivid.length)]!
+        : pool[Math.floor(rng() * pool.length)]!;
+  }
+  let u = Math.floor(rng() * pool.length);
+  for (let i = 0; i < pieces.length; i++) {
+    if (i === focalIdx) continue;
+    const p = pieces[i];
+    if (p) {
+      p.risoInkTreatment = pool[u % pool.length]!;
+      u++;
     }
   }
 }
@@ -439,6 +517,8 @@ function focalFieldAnchor(
       return { fx: rand(rng, 38, 62), fy: rand(rng, 48, 70) };
     case "illustrated-surreal":
       return { fx: rand(rng, 32, 68), fy: rand(rng, 28, 68) };
+    case "riso-graphic":
+      return { fx: rand(rng, 36, 64), fy: rand(rng, 34, 58) };
     case "quiet-open":
     default:
       return { fx: rand(rng, 34, 66), fy: rand(rng, 34, 66) };
@@ -460,6 +540,8 @@ function diagonalSweepStart(prof: LayoutProfile, rng: () => number): number {
       return rand(rng, -1.12, -0.48) * Math.PI;
     case "illustrated-surreal":
       return rand(rng, -0.25, 0.25) * Math.PI;
+    case "riso-graphic":
+      return rand(rng, -0.92, -0.15) * Math.PI;
     case "quiet-open":
     default:
       return rng() * Math.PI * 2;
@@ -484,6 +566,277 @@ function cornerScatter(
     default:
       return { x: hi - rng() * span, y: hi - rng() * span };
   }
+}
+
+/**
+ * Riso / zine poster layout: layered but breathable — skips scrapbook overlap bias so
+ * prints stay readable (especially on mobile density).
+ */
+function placeRisoGraphicPieces(
+  mode: CompositionModeId,
+  count: number,
+  focal: number,
+  rng: () => number,
+  hints: StyleLayoutHints,
+  rotCap: number,
+  compositionKind: CanvasCompositionKind,
+): PieceLayout[] {
+  const pieces: PieceLayout[] = new Array(count);
+  const others = Array.from({ length: count }, (_, i) => i).filter(
+    (i) => i !== focal,
+  );
+  shuffleInPlace(others, rng);
+
+  const packed = count >= 6;
+  const packedTight = count >= 7;
+  const maxSec = Math.max(1, count - 1);
+  const secN = clamp(
+    Math.floor(
+      (count - 1) *
+        (packed ? 0.52 + rng() * 0.14 : 0.44 + rng() * 0.16),
+    ),
+    Math.min(2, maxSec),
+    maxSec,
+  );
+  const secondarySet = new Set(others.slice(0, secN));
+
+  const fw = rand(rng, hints.focalWidthMin, hints.focalWidthMax);
+  const fh = rand(rng, hints.focalHeightMin, hints.focalHeightMax);
+  const anchor = focalFieldAnchor("riso-graphic", rng);
+  let fx = anchor.fx + rand(rng, -10, 10);
+  let fy = anchor.fy + rand(rng, -12, 12);
+  fx = clamp(fx, 28, 72);
+  fy = clamp(fy, 24, 76);
+
+  switch (compositionKind) {
+    case "vertical-story":
+      fy = lerp(fy, rand(rng, 34, 44), 0.45);
+      fx = lerp(fx, 50, 0.22);
+      break;
+    case "portrait-editorial":
+      fy = lerp(fy, rand(rng, 38, 48), 0.4);
+      break;
+    case "portrait-journal":
+      fx = lerp(fx, 50, 0.2);
+      fy = lerp(fy, 50, 0.15);
+      break;
+    case "square-balanced":
+      fx = lerp(fx, 50, 0.35);
+      fy = lerp(fy, 50, 0.32);
+      break;
+    case "cinematic-wide":
+      fx = lerp(
+        fx,
+        rng() > 0.5 ? rand(rng, 56, 68) : rand(rng, 32, 44),
+        0.36,
+      );
+      fy = lerp(fy, rand(rng, 40, 56), 0.24);
+      break;
+    case "portrait-social":
+    default:
+      break;
+  }
+
+  const [fjx, fjy] = jitter(mode, rng, fx, fy, packed ? 10 : 13);
+  const focalShrink = packed ? rand(rng, 0.8, 0.9) : rand(rng, 0.88, 0.99);
+  let fwSized = fw * focalShrink * rand(rng, 1.02, 1.1);
+  let fhSized = fh * focalShrink * rand(rng, 1.02, 1.1);
+  let capW = 54;
+  let capH = 50;
+
+  switch (compositionKind) {
+    case "vertical-story":
+      capW = Math.min(capW, 44);
+      capH = Math.min(capH + 4, 54);
+      break;
+    case "portrait-editorial":
+      capW = Math.min(capW, 44);
+      capH = Math.min(capH + 2, 52);
+      break;
+    case "portrait-journal":
+      capW = Math.min(capW, 48);
+      capH = Math.min(capH, 48);
+      break;
+    case "square-balanced":
+      capW = Math.min(capW, 48);
+      capH = Math.min(capH, 48);
+      break;
+    case "cinematic-wide":
+      capW = Math.min(capW + 4, 56);
+      capH = Math.min(capH, 42);
+      break;
+    case "portrait-social":
+    default:
+      break;
+  }
+
+  if (packed) {
+    const pm = packedTight ? 0.8 : 0.86;
+    fwSized *= pm;
+    fhSized *= pm;
+    capW = Math.min(capW, packedTight ? 44 : 46);
+    capH = Math.min(capH, packedTight ? 40 : 44);
+  }
+
+  pieces[focal] = {
+    ...basePieceFields(rng, hints, rotCap, 0),
+    xPct: fjx,
+    yPct: fjy,
+    widthPct: Math.min(capW, fwSized),
+    heightPct: Math.min(capH, fhSized),
+    rotate: styleRotation(rng, rotCap * 0.72),
+    zIndex: 0,
+    floatYOffsetPx: rand(rng, -6, 8),
+    tier: 0,
+  };
+
+  const focalW = pieces[focal]!.widthPct;
+  const diag = diagonalSweepStart("riso-graphic", rng);
+  const arcSpread =
+    Math.PI * (packed ? 0.62 + rng() * 0.36 : 0.55 + rng() * 0.35);
+  const rClear =
+    (22 +
+      focalW * 0.34 +
+      rand(rng, 6, 18) +
+      (packed ? 6 + (count - 6) * 2 : 0)) *
+    rand(rng, 0.95, 1.08);
+
+  let secRank = 0;
+  for (const idx of others) {
+    const tier: PieceTier = secondarySet.has(idx) ? 1 : 2;
+    let x = 50;
+    let y = 50;
+    let w = 28;
+    let h = 32;
+
+    if (tier === 1) {
+      secRank += 1;
+      const slot = (secRank - 1) / Math.max(1, secN - 0.001);
+      w = rand(rng, hints.secondaryWidthMin, hints.secondaryWidthMax);
+      h = rand(rng, hints.secondaryHeightMin, hints.secondaryHeightMax);
+      w *= rand(rng, 0.9, 0.98);
+      h *= rand(rng, 0.9, 0.98);
+      if (packed) {
+        w = clamp(
+          w * rand(rng, 0.97, 1.04),
+          hints.secondaryWidthMin,
+          hints.secondaryWidthMax + 2,
+        );
+        h = clamp(
+          h * rand(rng, 0.97, 1.03),
+          hints.secondaryHeightMin,
+          hints.secondaryHeightMax + 2,
+        );
+      }
+
+      let angle =
+        diag + arcSpread * slot + styleRotation(rng, 0.32 + rng() * 0.18);
+      let radX = rClear + rand(rng, 12, 30) * (0.52 + slot * 0.5);
+      let radY = rClear * 0.92 + rand(rng, 8, 26) * (0.5 + slot * 0.48);
+      if (packed) {
+        radX *= rand(rng, 1.04, 1.12);
+        radY *= rand(rng, 1.02, 1.1);
+      }
+
+      switch (compositionKind) {
+        case "vertical-story":
+          radX *= 0.76;
+          radY *= 1.32;
+          if (Math.sin(angle) < -0.12) {
+            angle += rand(rng, 0.45, 1.2);
+          }
+          break;
+        case "portrait-editorial":
+          radY *= 1.2;
+          radX *= 0.88;
+          break;
+        case "portrait-journal":
+          radX *= 1.06;
+          radY *= 1.06;
+          break;
+        case "square-balanced":
+          radX *= 0.88;
+          radY *= 0.88;
+          break;
+        case "cinematic-wide":
+          radX *= 1.38;
+          radY *= 0.7;
+          break;
+        case "portrait-social":
+        default:
+          radY *= 1.06;
+          radX *= 0.96;
+          break;
+      }
+
+      x = fx + Math.cos(angle) * radX;
+      y = fy + Math.sin(angle) * radY;
+
+      const drift = mode === "chaotic" ? 1.06 : mode === "minimal" ? 0.94 : 1;
+      x = fx + (x - fx) * drift;
+      y = fy + (y - fy) * drift;
+    } else {
+      const allowTiny = !packed && rng() < 0.1;
+      if (allowTiny) {
+        w = rand(rng, 8, 14);
+        h = rand(rng, 10, 18);
+        w *= rand(rng, 0.85, 0.94);
+        h *= rand(rng, 0.85, 0.94);
+      } else {
+        w = rand(rng, hints.tertiaryWidthMin, hints.tertiaryWidthMax);
+        h = rand(rng, hints.tertiaryHeightMin, hints.tertiaryHeightMax);
+        w = Math.max(w, packed ? 12 : 11);
+        h = Math.max(h, packed ? 13 : 12);
+        w *= rand(rng, 0.85, 0.94);
+        h *= rand(rng, 0.85, 0.94);
+      }
+
+      if (rng() < (packed ? 0.42 : 0.32)) {
+        const c = cornerScatter(Math.floor(rng() * 4), rng, PHOTO_PAPER_INSET);
+        x = c.x + (rng() - 0.5) * 6;
+        y = c.y + (rng() - 0.5) * 6;
+      } else {
+        const ang = rng() * Math.PI * 2;
+        const strandR = rand(rng, packed ? 22 : 16, packed ? 44 : 34);
+        let squashX = 0.55 + rng() * 0.2;
+        let squashY = 0.46 + rng() * 0.2;
+        if (
+          compositionKind === "vertical-story" ||
+          compositionKind === "portrait-editorial"
+        ) {
+          squashY *= 1.28;
+          squashX *= 0.88;
+        } else if (compositionKind === "cinematic-wide") {
+          squashX *= 1.28;
+          squashY *= 0.85;
+        } else if (compositionKind === "square-balanced") {
+          squashX = squashY = 0.6 + rng() * 0.1;
+        }
+        x = 50 + Math.cos(ang) * strandR * squashX;
+        y = 50 + Math.sin(ang) * strandR * squashY;
+        x += (rng() - 0.5) * 8;
+        y += (rng() - 0.5) * 8;
+      }
+    }
+
+    const jitAmt = tier === 1 ? 14 + rng() * 4 : packed ? 14 + rng() * 3 : 22;
+    const [jx, jy] = jitter(mode, rng, x, y, jitAmt);
+    pieces[idx] = {
+      ...basePieceFields(rng, hints, rotCap, tier),
+      xPct: jx,
+      yPct: jy,
+      widthPct: w,
+      heightPct: h,
+      rotate: styleRotation(rng, rotCap * (tier === 2 ? 1.02 : 0.82)),
+      zIndex: 0,
+      floatYOffsetPx:
+        tier === 2 ? rand(rng, -10, 12) : rand(rng, -8, 10),
+      tier,
+    };
+  }
+
+  finalizePiecePositions(pieces, focal, rng, { skipOverlapBias: true });
+  return pieces;
 }
 
 /**
@@ -714,6 +1067,18 @@ function placePiecesUnified(
 
   if (prof === "illustrated-surreal") {
     return placeIllustratedSurrealPieces(
+      mode,
+      count,
+      focal,
+      rng,
+      hints,
+      rotCap,
+      compositionKind,
+    );
+  }
+
+  if (prof === "riso-graphic") {
+    return placeRisoGraphicPieces(
       mode,
       count,
       focal,
@@ -1093,6 +1458,10 @@ export function computeCollageLayout(
   }
   assignOrganicZ(pieces, focalIndex, rng, hints.layoutProfile);
 
+  if (hints.layoutProfile === "riso-graphic") {
+    assignRisoInkTreatments(pieces, focalIndex, rng);
+  }
+
   const perm = Array.from({ length: safeCount }, (_, i) => i);
   shuffleInPlace(perm, rng);
 
@@ -1113,15 +1482,14 @@ export function computeCollageLayout(
   const tapeMax = options?.liteDecor ? 4 : 8;
   const scrapMax = options?.liteDecor ? 5 : 12;
 
-  const tapeCount = clamp(
-    Math.round(
-      (hints.tapeCountMin +
-        rng() * (hints.tapeCountMax - hints.tapeCountMin + 1)) *
-        d.tape,
-    ),
-    1,
-    tapeMax,
-  );
+  const tapeLoRaw = clamp(Math.min(hints.tapeCountMin, hints.tapeCountMax), 0, tapeMax);
+  const tapeHiRaw = clamp(Math.max(hints.tapeCountMin, hints.tapeCountMax), tapeLoRaw, tapeMax);
+  const tapeSpanInts = tapeHiRaw - tapeLoRaw;
+  const tapeBaseDiscrete =
+    tapeSpanInts <= 0
+      ? tapeLoRaw
+      : tapeLoRaw + Math.floor(rng() * (tapeSpanInts + 1));
+  const tapeCount = clamp(Math.round(tapeBaseDiscrete * d.tape), tapeLoRaw, tapeHiRaw);
   const tapes: TapeLayout[] = [];
   for (let t = 0; t < tapeCount; t++) {
     const taper = rng();
@@ -1187,14 +1555,17 @@ export function computeCollageLayout(
     });
   }
 
+  const scrapLoRaw = clamp(Math.min(hints.scrapCountMin, hints.scrapCountMax), 0, scrapMax);
+  const scrapHiRaw = clamp(Math.max(hints.scrapCountMin, hints.scrapCountMax), scrapLoRaw, scrapMax);
+  const scrapSpanInts = scrapHiRaw - scrapLoRaw;
+  const scrapBaseDiscrete =
+    scrapSpanInts <= 0
+      ? scrapLoRaw
+      : scrapLoRaw + Math.floor(rng() * (scrapSpanInts + 1));
   const scrapCount = clamp(
-    Math.round(
-      (hints.scrapCountMin +
-        rng() * (hints.scrapCountMax - hints.scrapCountMin + 1)) *
-        d.scrap,
-    ),
-    1,
-    scrapMax,
+    Math.round(scrapBaseDiscrete * d.scrap),
+    Math.max(0, scrapLoRaw),
+    scrapHiRaw,
   );
   const palette = hints.scrapPalette;
   const scraps: ScrapLayout[] = [];
@@ -1236,7 +1607,9 @@ export function computeCollageLayout(
         ? rand(rng, 8, 28)
         : prof === "illustrated-surreal"
           ? rand(rng, 8, 34)
-          : rand(rng, 52, 92);
+          : prof === "riso-graphic"
+            ? rand(rng, 12, 38)
+            : rand(rng, 52, 92);
 
   if (compositionKind === "vertical-story") {
     captionTopPct = captionAway ? rand(rng, 74, 92) : rand(rng, 62, 86);
